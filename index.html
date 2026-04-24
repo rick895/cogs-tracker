@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Natural Hounds — COGS Tracker</title>
+<style>
+/* ============================================================
+   NATURAL HOUNDS COGS TRACKER
+   Utilitarian-industrial. Built for iPad on a production floor.
+   High contrast. Big touch targets (min 56px). Mono for data.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Bricolage+Grotesque:wght@500;600;700;800&display=swap');
+
+:root {
+  --bg: #0f1211;
+  --bg-elev: #171b1a;
+  --bg-card: #1e2322;
+  --bg-input: #0a0d0c;
+  --border: #2a302e;
+  --border-strong: #3d4543;
+  --text: #e8ebe9;
+  --text-dim: #8a9390;
+  --text-faint: #5a6360;
+  --accent: #d4f542;      /* Hi-vis yellow-green (industrial) */
+  --accent-dim: #8aa028;
+  --warn: #ff9f43;
+  --danger: #ff5c5c;
+  --ok: #4ade80;
+
+  --font-display: 'Bricolage Grotesque', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --radius: 4px;
+  --radius-lg: 8px;
+  --touch: 56px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 16px;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+/* ============================================================
+   TOP BAR
+   ============================================================ */
+.topbar {
+  height: 64px;
+  background: var(--bg-elev);
+  border-bottom: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.logo {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo-dot {
+  width: 10px; height: 10px;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 12px var(--accent);
+}
+.logo-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding-top: 2px;
+}
+
+.loc-badge {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  color: var(--accent);
+}
+
+.logout-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.logout-btn:active { background: var(--bg-card); }
+
+/* ============================================================
+   BOTTOM TAB BAR
+   ============================================================ */
+.tabbar {
+  display: flex;
+  background: var(--bg-elev);
+  border-top: 2px solid var(--border);
+  flex-shrink: 0;
+}
+.tab {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 16px 8px;
+  cursor: pointer;
+  border-top: 3px solid transparent;
+  font-weight: 500;
+}
+.tab.active {
+  color: var(--accent);
+  border-top-color: var(--accent);
+  background: var(--bg-card);
+}
+.tab:disabled { opacity: 0.3; }
+.tab-label { display: block; margin-top: 2px; }
+
+/* ============================================================
+   MAIN CONTENT
+   ============================================================ */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.screen { display: none; }
+.screen.active { display: block; }
+
+.screen-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.screen-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+}
+.screen-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-top: 4px;
+}
+
+/* ============================================================
+   LOGIN SCREEN
+   ============================================================ */
+.login-wrap {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(212,245,66,0.06) 0%, transparent 50%),
+    radial-gradient(circle at 80% 70%, rgba(212,245,66,0.03) 0%, transparent 50%),
+    var(--bg);
+}
+.login-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 40px 32px;
+}
+.login-logo {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 32px;
+  letter-spacing: -0.03em;
+  margin-bottom: 4px;
+}
+.login-logo-accent { color: var(--accent); }
+.login-tagline {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 36px;
+}
+
+.loc-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.loc-btn {
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  color: var(--text);
+  padding: 20px 12px;
+  border-radius: var(--radius);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.loc-btn.selected {
+  border-color: var(--accent);
+  background: rgba(212,245,66,0.08);
+  color: var(--accent);
+}
+
+/* ============================================================
+   FORMS
+   ============================================================ */
+.field { margin-bottom: 16px; }
+.field-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.field-hint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 6px;
+}
+
+.input, .select, .textarea {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0 16px;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  border-radius: var(--radius);
+  height: var(--touch);
+  outline: none;
+}
+.textarea { padding: 14px 16px; height: auto; min-height: 80px; resize: vertical; }
+.select { appearance: none; padding-right: 40px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238a9390' d='M6 8L0 0h12z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 16px center; }
+.input:focus, .select:focus, .textarea:focus { border-color: var(--accent); }
+.input::placeholder { color: var(--text-faint); }
+
+.input-lg {
+  height: 72px;
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--touch);
+  padding: 0 24px;
+  border: none;
+  border-radius: var(--radius);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.08s, background 0.15s;
+  letter-spacing: -0.01em;
+}
+.btn:active { transform: scale(0.98); }
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg);
+}
+.btn-primary:active { background: var(--accent-dim); }
+
+.btn-secondary {
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+
+.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+.btn-full { width: 100%; }
+.btn-row { display: flex; gap: 10px; }
+.btn-row > .btn { flex: 1; }
+
+/* ============================================================
+   INTAKE LIST
+   ============================================================ */
+.toolbar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.toolbar .btn { min-height: 48px; padding: 0 18px; font-size: 14px; }
+
+.filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 8px;
+  background: var(--bg-elev);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+.filter-chip {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.filter-chip.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+.intake-list { display: flex; flex-direction: column; gap: 10px; }
+
+.intake-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: 16px;
+  cursor: pointer;
+}
+.intake-card:active { background: var(--bg-card); }
+.intake-card.depleted { opacity: 0.55; border-left-color: var(--border); }
+.intake-card.open { border-left-color: var(--accent); }
+
+.intake-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+.intake-ingredient {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 18px;
+  text-transform: capitalize;
+}
+.intake-id {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  letter-spacing: 0.08em;
+}
+
+.intake-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.stat {
+  background: var(--bg-input);
+  border-radius: var(--radius);
+  padding: 10px;
+}
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.stat-value {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+}
+.stat-value.accent { color: var(--accent); }
+
+.intake-meta {
+  display: flex;
+  gap: 14px;
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.intake-meta span { display: inline-flex; align-items: center; gap: 4px; }
+
+/* ============================================================
+   EMPTY STATE
+   ============================================================ */
+.empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-dim);
+}
+.empty-icon {
+  font-size: 40px;
+  margin-bottom: 12px;
+  opacity: 0.4;
+}
+.empty-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.empty-sub {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-faint);
+  max-width: 300px;
+  margin: 0 auto;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   MODAL / SHEET
+   ============================================================ */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 100;
+}
+.sheet-backdrop.open { display: flex; }
+
+.sheet {
+  width: 100%;
+  max-width: 640px;
+  max-height: 92dvh;
+  background: var(--bg-elev);
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+  border-top: 2px solid var(--border-strong);
+  overflow-y: auto;
+  animation: slideUp 0.2s ease-out;
+}
+@keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+
+.sheet-header {
+  position: sticky;
+  top: 0;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  z-index: 1;
+}
+.sheet-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+}
+.sheet-close {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.sheet-body { padding: 20px; }
+
+/* ============================================================
+   PHOTO CAPTURE
+   ============================================================ */
+.capture-choice {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.capture-btn {
+  background: var(--bg-card);
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 28px 16px;
+  text-align: center;
+  cursor: pointer;
+  color: var(--text);
+}
+.capture-btn:active { background: var(--bg-elev); }
+.capture-icon { font-size: 32px; margin-bottom: 8px; display: block; }
+.capture-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.photo-preview {
+  width: 100%;
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+  max-height: 240px;
+  object-fit: contain;
+  background: var(--bg-input);
+}
+
+.extracting {
+  padding: 30px 20px;
+  text-align: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  margin-bottom: 20px;
+}
+.spinner {
+  width: 32px; height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.extracting-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 0.08em;
+}
+
+/* Extracted line items */
+.line-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 10px;
+}
+.line-item.low-conf { border-left-color: var(--warn); }
+.line-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.line-item-name {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-size: 14px;
+  text-transform: capitalize;
+}
+.conf-badge {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+}
+.conf-high   { color: var(--ok);     border-color: var(--ok); }
+.conf-medium { color: var(--warn);   border-color: var(--warn); }
+.conf-low    { color: var(--danger); border-color: var(--danger); }
+
+.line-item-raw {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-bottom: 10px;
+  padding: 6px 8px;
+  background: var(--bg-input);
+  border-radius: var(--radius);
+}
+.line-item-edits { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.line-item-edits .input { height: 44px; font-size: 14px; padding: 0 10px; }
+.line-item-remove {
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+.toast {
+  position: fixed;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--accent);
+  padding: 14px 20px;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  z-index: 200;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  max-width: 90vw;
+}
+.toast.show { opacity: 1; }
+.toast.error { border-left-color: var(--danger); }
+.toast.warn  { border-left-color: var(--warn); }
+
+/* ============================================================
+   RESPONSIVE — slightly wider layouts on iPad
+   ============================================================ */
+@media (min-width: 768px) {
+  .main { padding: 32px; max-width: 900px; margin: 0 auto; width: 100%; }
+  .topbar { padding: 0 32px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     LOGIN SCREEN
+     ============================================================ -->
+<div id="login" class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">Natural<span class="login-logo-accent">.</span>Hounds</div>
+    <div class="login-tagline">COGS Tracker · v1.0</div>
+
+    <div class="field">
+      <label class="field-label">Location</label>
+      <div class="loc-picker">
+        <button class="loc-btn" data-loc="babylon">Babylon</button>
+        <button class="loc-btn" data-loc="port_jeff">Port Jeff</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">Password</label>
+      <input type="password" class="input input-lg" id="login-password" autocomplete="off">
+    </div>
+
+    <button class="btn btn-primary btn-full" id="login-btn">Sign In</button>
+    <div id="login-error" style="margin-top:14px;color:var(--danger);font-family:var(--font-mono);font-size:12px;text-align:center;min-height:18px;"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MAIN APP
+     ============================================================ -->
+<div id="app" style="display:none;flex-direction:column;height:100dvh;">
+
+  <header class="topbar">
+    <div>
+      <div class="logo"><span class="logo-dot"></span>Natural Hounds</div>
+      <div class="logo-sub">COGS Tracker</div>
+    </div>
+    <div class="loc-badge" id="loc-badge">—</div>
+    <button class="logout-btn" id="logout-btn">Exit</button>
+  </header>
+
+  <main class="main" id="main-content">
+
+    <!-- INTAKE SCREEN -->
+    <section class="screen active" data-screen="intake">
+      <div class="screen-header">
+        <div>
+          <h1 class="screen-title">Intake</h1>
+          <div class="screen-sub">Raw material receiving</div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn btn-primary" id="new-intake-btn">
+          <span>＋</span> New Intake
+        </button>
+        <button class="btn btn-secondary" id="refresh-btn">↻ Refresh</button>
+      </div>
+
+      <div class="filters">
+        <button class="filter-chip active" data-filter="open">Open Only</button>
+        <button class="filter-chip" data-filter="all">All</button>
+      </div>
+
+      <div class="intake-list" id="intake-list">
+        <div class="empty">
+          <div class="empty-icon">◆</div>
+          <div class="empty-title">No intakes yet</div>
+          <div class="empty-sub">Tap "New Intake" to log raw material arriving from a supplier.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRODUCTION (placeholder for next session) -->
+    <section class="screen" data-screen="production">
+      <div class="screen-header">
+        <div>
+          <h1 class="screen-title">Production</h1>
+          <div class="screen-sub">Coming in v1.1</div>
+        </div>
+      </div>
+      <div class="empty">
+        <div class="empty-icon">⚙</div>
+        <div class="empty-title">Production flows coming next</div>
+        <div class="empty-sub">Get intake working first, then we'll add fresh + jerky production batches.</div>
+      </div>
+    </section>
+
+    <!-- REPORTS (placeholder) -->
+    <section class="screen" data-screen="reports">
+      <div class="screen-header">
+        <div>
+          <h1 class="screen-title">Reports</h1>
+          <div class="screen-sub">Coming in v1.2</div>
+        </div>
+      </div>
+      <div class="empty">
+        <div class="empty-icon">▤</div>
+        <div class="empty-title">Reports need data first</div>
+        <div class="empty-sub">Yield trends and COGS reports unlock once production batches are being logged.</div>
+      </div>
+    </section>
+
+  </main>
+
+  <nav class="tabbar">
+    <button class="tab active" data-tab="intake"><div>◆</div><span class="tab-label">Intake</span></button>
+    <button class="tab" data-tab="production" disabled><div>⚙</div><span class="tab-label">Production</span></button>
+    <button class="tab" data-tab="reports" disabled><div>▤</div><span class="tab-label">Reports</span></button>
+  </nav>
+</div>
+
+<!-- ============================================================
+     NEW INTAKE SHEET
+     ============================================================ -->
+<div class="sheet-backdrop" id="intake-sheet">
+  <div class="sheet">
+    <div class="sheet-header">
+      <div class="sheet-title" id="intake-sheet-title">New Intake</div>
+      <button class="sheet-close" data-close="intake-sheet">×</button>
+    </div>
+    <div class="sheet-body">
+
+      <!-- STEP 1: Choose entry method -->
+      <div id="intake-step-choice">
+        <div class="field-label" style="margin-bottom:14px;">How do you want to enter this?</div>
+        <div class="capture-choice">
+          <button class="capture-btn" id="capture-photo-btn">
+            <span class="capture-icon">⊙</span>
+            <div class="capture-label">Photo of<br>Invoice</div>
+          </button>
+          <button class="capture-btn" id="capture-manual-btn">
+            <span class="capture-icon">✎</span>
+            <div class="capture-label">Manual<br>Entry</div>
+          </button>
+        </div>
+        <div class="field-hint" style="text-align:center;">
+          Photo uses AI to pull line items off the invoice. You review and confirm.
+        </div>
+      </div>
+
+      <!-- STEP 2: Photo flow -->
+      <div id="intake-step-photo" style="display:none;">
+        <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none;">
+        <img id="photo-preview" class="photo-preview" style="display:none;" alt="">
+
+        <div id="extracting-ui" class="extracting" style="display:none;">
+          <div class="spinner"></div>
+          <div class="extracting-text">Reading invoice…</div>
+        </div>
+
+        <div id="extracted-meta" style="display:none; margin-bottom:16px;">
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label">Supplier</label>
+              <input type="text" class="input" id="ex-supplier">
+            </div>
+            <div class="field">
+              <label class="field-label">Invoice #</label>
+              <input type="text" class="input" id="ex-invoice">
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label">Date Received</label>
+            <input type="date" class="input" id="ex-date">
+          </div>
+        </div>
+
+        <div id="line-items"></div>
+
+        <div id="photo-actions" style="display:none;" class="btn-row" style="margin-top:20px;">
+          <button class="btn btn-secondary" id="photo-retake">Retake</button>
+          <button class="btn btn-primary" id="photo-save">Save All</button>
+        </div>
+      </div>
+
+      <!-- STEP 3: Manual flow -->
+      <div id="intake-step-manual" style="display:none;">
+        <div class="field">
+          <label class="field-label">Ingredient</label>
+          <input type="text" class="input input-lg" id="m-ingredient" placeholder="e.g. beef_knuckles" autocomplete="off">
+          <div class="field-hint">Use lowercase_underscores. Examples: beef, pork, turkey, sweet_potato, beef_knuckles</div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label">Weight (lbs)</label>
+            <input type="number" step="0.01" class="input input-lg" id="m-weight" inputmode="decimal">
+          </div>
+          <div class="field">
+            <label class="field-label">Total Cost ($)</label>
+            <input type="number" step="0.01" class="input input-lg" id="m-cost" inputmode="decimal">
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label class="field-label">Supplier</label>
+            <input type="text" class="input" id="m-supplier">
+          </div>
+          <div class="field">
+            <label class="field-label">Invoice #</label>
+            <input type="text" class="input" id="m-invoice">
+          </div>
+        </div>
+
+        <div class="field">
+          <label class="field-label">Date Received</label>
+          <input type="date" class="input" id="m-date">
+        </div>
+
+        <div class="field">
+          <label class="field-label">Notes (optional)</label>
+          <textarea class="textarea" id="m-notes" placeholder="Anything worth remembering about this batch…"></textarea>
+        </div>
+
+        <div class="btn-row" style="margin-top:24px;">
+          <button class="btn btn-secondary" data-close="intake-sheet">Cancel</button>
+          <button class="btn btn-primary" id="manual-save">Save Intake</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     INTAKE DETAIL SHEET
+     ============================================================ -->
+<div class="sheet-backdrop" id="detail-sheet">
+  <div class="sheet">
+    <div class="sheet-header">
+      <div class="sheet-title">Intake Detail</div>
+      <button class="sheet-close" data-close="detail-sheet">×</button>
+    </div>
+    <div class="sheet-body" id="detail-body"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     TOAST
+     ============================================================ -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const API_BASE = 'https://cogs-tracker.rick-026.workers.dev';
+// For local testing against a mock, set: const API_BASE = 'mock';
+
+const state = {
+  token: localStorage.getItem('cogs_token') || null,
+  locationId: localStorage.getItem('cogs_loc') || null,
+  locationName: localStorage.getItem('cogs_loc_name') || null,
+  selectedLoc: null,
+  filter: 'open',
+  extractedData: null,
+};
+
+// ============================================================
+// API WRAPPER
+// ============================================================
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (state.token) headers['Authorization'] = `Bearer ${state.token}`;
+  const res = await fetch(`${API_BASE}${path}`, { ...opts, headers });
+  if (res.status === 401) {
+    logout();
+    throw new Error('Session expired');
+  }
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+// ============================================================
+// TOAST
+// ============================================================
+let toastTimer;
+function toast(msg, kind = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + kind;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.className = 'toast', 3500);
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+document.querySelectorAll('.loc-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.loc-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    state.selectedLoc = btn.dataset.loc;
+  });
+});
+
+document.getElementById('login-btn').addEventListener('click', login);
+document.getElementById('login-password').addEventListener('keydown', e => {
+  if (e.key === 'Enter') login();
+});
+
+async function login() {
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+  if (!state.selectedLoc) { errEl.textContent = 'Pick a location'; return; }
+  const pw = document.getElementById('login-password').value;
+  if (!pw) { errEl.textContent = 'Enter password'; return; }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ location: state.selectedLoc, password: pw })
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || 'Sign in failed'; return; }
+
+    state.token = data.token;
+    state.locationId = data.location_id;
+    state.locationName = data.name;
+    localStorage.setItem('cogs_token', data.token);
+    localStorage.setItem('cogs_loc', data.location_id);
+    localStorage.setItem('cogs_loc_name', data.name);
+    showApp();
+  } catch (e) {
+    errEl.textContent = 'Network error: ' + e.message;
+  }
+}
+
+function logout() {
+  state.token = null;
+  state.locationId = null;
+  state.locationName = null;
+  localStorage.removeItem('cogs_token');
+  localStorage.removeItem('cogs_loc');
+  localStorage.removeItem('cogs_loc_name');
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login').style.display = 'flex';
+}
+
+document.getElementById('logout-btn').addEventListener('click', logout);
+
+function showApp() {
+  document.getElementById('login').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('loc-badge').textContent = state.locationName;
+  loadIntake();
+}
+
+// ============================================================
+// TABS
+// ============================================================
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    if (tab.disabled) return;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.querySelector(`.screen[data-screen="${tab.dataset.tab}"]`).classList.add('active');
+  });
+});
+
+// ============================================================
+// INTAKE LIST
+// ============================================================
+document.querySelectorAll('.filter-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    state.filter = chip.dataset.filter;
+    loadIntake();
+  });
+});
+
+document.getElementById('refresh-btn').addEventListener('click', loadIntake);
+
+async function loadIntake() {
+  try {
+    const q = state.filter === 'open' ? '?open_only=1' : '';
+    const data = await api(`/api/intake${q}`);
+    renderIntake(data.batches || []);
+  } catch (e) {
+    toast('Failed to load: ' + e.message, 'error');
+  }
+}
+
+function renderIntake(batches) {
+  const list = document.getElementById('intake-list');
+  if (batches.length === 0) {
+    list.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">◆</div>
+        <div class="empty-title">No ${state.filter === 'open' ? 'open' : ''} intakes</div>
+        <div class="empty-sub">Tap "New Intake" to log raw material arriving from a supplier.</div>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = batches.map(b => {
+    const isDepleted = b.remaining_lbs < 0.01;
+    const cls = isDepleted ? 'depleted' : 'open';
+    const costPerLb = (b.cost_usd / b.weight_lbs).toFixed(2);
+    return `
+      <div class="intake-card ${cls}" data-id="${b.id}">
+        <div class="intake-card-top">
+          <div class="intake-ingredient">${b.ingredient.replace(/_/g, ' ')}</div>
+          <div class="intake-id">${b.id}</div>
+        </div>
+        <div class="intake-stats">
+          <div class="stat">
+            <div class="stat-label">Weight In</div>
+            <div class="stat-value">${fmtNum(b.weight_lbs)} lb</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Remaining</div>
+            <div class="stat-value ${isDepleted?'':'accent'}">${fmtNum(b.remaining_lbs)} lb</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Cost / lb</div>
+            <div class="stat-value">$${costPerLb}</div>
+          </div>
+        </div>
+        <div class="intake-meta">
+          <span>◷ ${b.date_received}</span>
+          ${b.supplier ? `<span>▸ ${b.supplier}</span>` : ''}
+          ${b.invoice_number ? `<span>#${b.invoice_number}</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('.intake-card').forEach(card => {
+    card.addEventListener('click', () => openDetail(card.dataset.id, batches));
+  });
+}
+
+function fmtNum(n) {
+  return Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
+}
+
+// ============================================================
+// INTAKE DETAIL
+// ============================================================
+function openDetail(id, batches) {
+  const b = batches.find(x => x.id === id);
+  if (!b) return;
+  const used = b.weight_lbs - b.remaining_lbs;
+  const pctUsed = ((used / b.weight_lbs) * 100).toFixed(1);
+  const canEdit = used < 0.01;
+
+  document.getElementById('detail-body').innerHTML = `
+    <div class="field">
+      <div class="field-label">Batch ID</div>
+      <div style="font-family:var(--font-mono);font-size:13px;color:var(--accent);">${b.id}</div>
+    </div>
+    <div class="intake-stats" style="margin-bottom:20px;">
+      <div class="stat"><div class="stat-label">Ingredient</div><div class="stat-value" style="text-transform:capitalize;">${b.ingredient.replace(/_/g,' ')}</div></div>
+      <div class="stat"><div class="stat-label">Date</div><div class="stat-value">${b.date_received}</div></div>
+      <div class="stat"><div class="stat-label">Supplier</div><div class="stat-value" style="font-size:13px;">${b.supplier || '—'}</div></div>
+    </div>
+    <div class="intake-stats" style="margin-bottom:20px;">
+      <div class="stat"><div class="stat-label">Weight In</div><div class="stat-value">${fmtNum(b.weight_lbs)} lb</div></div>
+      <div class="stat"><div class="stat-label">Used</div><div class="stat-value">${fmtNum(used)} lb (${pctUsed}%)</div></div>
+      <div class="stat"><div class="stat-label">Remaining</div><div class="stat-value accent">${fmtNum(b.remaining_lbs)} lb</div></div>
+    </div>
+    <div class="intake-stats" style="margin-bottom:20px;">
+      <div class="stat"><div class="stat-label">Total Cost</div><div class="stat-value">$${fmtNum(b.cost_usd)}</div></div>
+      <div class="stat"><div class="stat-label">Cost / lb</div><div class="stat-value">$${(b.cost_usd/b.weight_lbs).toFixed(2)}</div></div>
+      <div class="stat"><div class="stat-label">Invoice #</div><div class="stat-value" style="font-size:12px;">${b.invoice_number || '—'}</div></div>
+    </div>
+    ${b.notes ? `<div class="field"><div class="field-label">Notes</div><div style="background:var(--bg-card);padding:12px;border-radius:var(--radius);font-family:var(--font-mono);font-size:13px;">${b.notes}</div></div>` : ''}
+    ${canEdit ? `
+      <div class="btn-row" style="margin-top:24px;">
+        <button class="btn btn-danger" id="delete-intake-btn">Delete</button>
+      </div>
+      <div class="field-hint" style="margin-top:8px;text-align:center;">
+        Editing available until this batch is used in production.
+      </div>` : `
+      <div class="field-hint" style="margin-top:16px;text-align:center;padding:12px;background:var(--bg-card);border-radius:var(--radius);">
+        This intake has been used in production. Locked to protect audit trail.
+      </div>`}
+  `;
+
+  if (canEdit) {
+    document.getElementById('delete-intake-btn').addEventListener('click', async () => {
+      if (!confirm('Delete this intake batch? This cannot be undone.')) return;
+      try {
+        await api(`/api/intake/${b.id}`, { method: 'DELETE' });
+        toast('Deleted');
+        closeSheet('detail-sheet');
+        loadIntake();
+      } catch (e) { toast(e.message, 'error'); }
+    });
+  }
+
+  openSheet('detail-sheet');
+}
+
+// ============================================================
+// NEW INTAKE SHEET
+// ============================================================
+function openSheet(id) { document.getElementById(id).classList.add('open'); }
+function closeSheet(id) { document.getElementById(id).classList.remove('open'); }
+
+document.querySelectorAll('[data-close]').forEach(btn => {
+  btn.addEventListener('click', () => closeSheet(btn.dataset.close));
+});
+
+document.getElementById('new-intake-btn').addEventListener('click', () => {
+  resetIntakeSheet();
+  openSheet('intake-sheet');
+});
+
+function resetIntakeSheet() {
+  document.getElementById('intake-step-choice').style.display = 'block';
+  document.getElementById('intake-step-photo').style.display = 'none';
+  document.getElementById('intake-step-manual').style.display = 'none';
+  document.getElementById('photo-preview').style.display = 'none';
+  document.getElementById('extracting-ui').style.display = 'none';
+  document.getElementById('extracted-meta').style.display = 'none';
+  document.getElementById('photo-actions').style.display = 'none';
+  document.getElementById('line-items').innerHTML = '';
+  document.getElementById('photo-input').value = '';
+  // Clear manual
+  ['m-ingredient','m-weight','m-cost','m-supplier','m-invoice','m-notes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('m-date').value = new Date().toISOString().slice(0,10);
+  state.extractedData = null;
+}
+
+document.getElementById('capture-manual-btn').addEventListener('click', () => {
+  document.getElementById('intake-step-choice').style.display = 'none';
+  document.getElementById('intake-step-manual').style.display = 'block';
+  document.getElementById('intake-sheet-title').textContent = 'Manual Intake';
+});
+
+document.getElementById('capture-photo-btn').addEventListener('click', () => {
+  document.getElementById('intake-step-choice').style.display = 'none';
+  document.getElementById('intake-step-photo').style.display = 'block';
+  document.getElementById('intake-sheet-title').textContent = 'Invoice Photo';
+  document.getElementById('photo-input').click();
+});
+
+// ============================================================
+// MANUAL INTAKE SAVE
+// ============================================================
+document.getElementById('manual-save').addEventListener('click', async () => {
+  const payload = {
+    ingredient: document.getElementById('m-ingredient').value.trim().toLowerCase().replace(/\s+/g, '_'),
+    weight_lbs: parseFloat(document.getElementById('m-weight').value),
+    cost_usd: parseFloat(document.getElementById('m-cost').value),
+    supplier: document.getElementById('m-supplier').value.trim() || null,
+    invoice_number: document.getElementById('m-invoice').value.trim() || null,
+    date_received: document.getElementById('m-date').value,
+    notes: document.getElementById('m-notes').value.trim() || null,
+  };
+
+  if (!payload.ingredient) return toast('Ingredient required', 'error');
+  if (!payload.weight_lbs || payload.weight_lbs <= 0) return toast('Weight must be > 0', 'error');
+  if (!payload.cost_usd || payload.cost_usd <= 0) return toast('Cost must be > 0', 'error');
+  if (!payload.date_received) return toast('Date required', 'error');
+
+  try {
+    await api('/api/intake', { method: 'POST', body: JSON.stringify(payload) });
+    toast('Intake saved');
+    closeSheet('intake-sheet');
+    loadIntake();
+  } catch (e) { toast(e.message, 'error'); }
+});
+
+// ============================================================
+// PHOTO CAPTURE + CLAUDE EXTRACTION
+// ============================================================
+document.getElementById('photo-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  // Show preview
+  const previewUrl = URL.createObjectURL(file);
+  const preview = document.getElementById('photo-preview');
+  preview.src = previewUrl;
+  preview.style.display = 'block';
+
+  // Convert to base64
+  const base64 = await fileToBase64(file);
+
+  // Show extracting UI
+  document.getElementById('extracting-ui').style.display = 'block';
+  document.getElementById('photo-actions').style.display = 'none';
+
+  try {
+    const res = await api('/api/intake/extract', {
+      method: 'POST',
+      body: JSON.stringify({ image_base64: base64, mime_type: file.type })
+    });
+
+    document.getElementById('extracting-ui').style.display = 'none';
+    renderExtraction(res.extraction);
+  } catch (e) {
+    document.getElementById('extracting-ui').style.display = 'none';
+    toast('Extraction failed: ' + e.message, 'error');
+  }
+});
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+function renderExtraction(ex) {
+  state.extractedData = ex;
+  document.getElementById('extracted-meta').style.display = 'block';
+  document.getElementById('ex-supplier').value = ex.supplier || '';
+  document.getElementById('ex-invoice').value = ex.invoice_number || '';
+  document.getElementById('ex-date').value = ex.date || new Date().toISOString().slice(0,10);
+
+  const items = ex.line_items || [];
+  const container = document.getElementById('line-items');
+
+  if (items.length === 0) {
+    container.innerHTML = `
+      <div class="empty" style="padding:30px 10px;">
+        <div class="empty-title" style="font-size:15px;">No line items detected</div>
+        <div class="empty-sub">Try a clearer photo, or use Manual Entry instead.</div>
+      </div>`;
+    document.getElementById('photo-actions').style.display = 'flex';
+    return;
+  }
+
+  container.innerHTML = items.map((item, idx) => {
+    const confClass = `conf-${item.confidence || 'medium'}`;
+    const lowConf = item.confidence === 'low' ? 'low-conf' : '';
+    return `
+      <div class="line-item ${lowConf}" data-idx="${idx}">
+        <div class="line-item-header">
+          <input type="text" class="input" style="flex:1;margin-right:10px;height:44px;font-size:14px;padding:0 10px;text-transform:lowercase;" value="${escapeHtml(item.ingredient || '')}" data-field="ingredient">
+          <span class="conf-badge ${confClass}">${item.confidence || '?'}</span>
+        </div>
+        ${item.raw_description ? `<div class="line-item-raw">"${escapeHtml(item.raw_description)}"</div>` : ''}
+        <div class="line-item-edits">
+          <div>
+            <div class="field-label">Weight (lbs)</div>
+            <input type="number" step="0.01" class="input" value="${item.weight_lbs || ''}" data-field="weight_lbs" inputmode="decimal">
+          </div>
+          <div>
+            <div class="field-label">Cost ($)</div>
+            <input type="number" step="0.01" class="input" value="${item.cost_usd || ''}" data-field="cost_usd" inputmode="decimal">
+          </div>
+        </div>
+        <button class="line-item-remove" data-remove="${idx}">✕ Remove this line</button>
+      </div>`;
+  }).join('');
+
+  container.querySelectorAll('[data-remove]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.closest('.line-item').remove();
+    });
+  });
+
+  document.getElementById('photo-actions').style.display = 'flex';
+}
+
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+document.getElementById('photo-retake').addEventListener('click', () => {
+  document.getElementById('photo-input').click();
+});
+
+document.getElementById('photo-save').addEventListener('click', async () => {
+  const items = Array.from(document.querySelectorAll('#line-items .line-item'));
+  if (items.length === 0) return toast('No line items to save', 'error');
+
+  const supplier = document.getElementById('ex-supplier').value.trim() || null;
+  const invoiceNum = document.getElementById('ex-invoice').value.trim() || null;
+  const dateRecv = document.getElementById('ex-date').value || new Date().toISOString().slice(0,10);
+
+  let saved = 0, failed = 0;
+  for (const el of items) {
+    const ingredient = el.querySelector('[data-field="ingredient"]').value.trim().toLowerCase().replace(/\s+/g, '_');
+    const weight = parseFloat(el.querySelector('[data-field="weight_lbs"]').value);
+    const cost = parseFloat(el.querySelector('[data-field="cost_usd"]').value);
+
+    if (!ingredient || !weight || !cost || weight <= 0 || cost <= 0) {
+      failed++;
+      continue;
+    }
+
+    try {
+      await api('/api/intake', {
+        method: 'POST',
+        body: JSON.stringify({
+          ingredient, weight_lbs: weight, cost_usd: cost,
+          supplier, invoice_number: invoiceNum, date_received: dateRecv
+        })
+      });
+      saved++;
+    } catch (e) {
+      console.error('Save failed:', e);
+      failed++;
+    }
+  }
+
+  if (saved > 0) {
+    toast(`Saved ${saved} line${saved===1?'':'s'}${failed?`, ${failed} failed`:''}`, failed ? 'warn' : '');
+    closeSheet('intake-sheet');
+    loadIntake();
+  } else {
+    toast('All saves failed — check fields', 'error');
+  }
+});
+
+// ============================================================
+// INIT
+// ============================================================
+if (state.token && state.locationId) {
+  showApp();
+} else {
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login').style.display = 'flex';
+}
+</script>
+</body>
+</html>
