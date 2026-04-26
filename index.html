@@ -765,42 +765,55 @@ body {
       </div>
     </section>
 
-    <!-- PRODUCTION (placeholder for next session) -->
+    <!-- PRODUCTION SCREEN -->
     <section class="screen" data-screen="production">
       <div class="screen-header">
         <div>
           <h1 class="screen-title">Production</h1>
-          <div class="screen-sub">Coming in v1.1</div>
+          <div class="screen-sub">Batch close-out & yield</div>
         </div>
       </div>
-      <div class="empty">
-        <div class="empty-icon">⚙</div>
-        <div class="empty-title">Production flows coming next</div>
-        <div class="empty-sub">Get intake working first, then we'll add fresh + jerky production batches.</div>
+
+      <div class="toolbar">
+        <button class="btn btn-primary" id="new-production-btn">
+          <span>＋</span> Log Batch
+        </button>
+        <button class="btn btn-secondary" id="refresh-production-btn">↻ Refresh</button>
+      </div>
+
+      <div class="intake-list" id="production-list">
+        <div class="empty">
+          <div class="empty-icon">⚙</div>
+          <div class="empty-title">No batches logged yet</div>
+          <div class="empty-sub">Tap "Log Batch" to record a production run after pack-out is complete.</div>
+        </div>
       </div>
     </section>
 
-    <!-- REPORTS (placeholder) -->
-    <section class="screen" data-screen="reports">
+    <!-- INVENTORY SCREEN -->
+    <section class="screen" data-screen="inventory">
       <div class="screen-header">
         <div>
-          <h1 class="screen-title">Reports</h1>
-          <div class="screen-sub">Coming in v1.2</div>
+          <h1 class="screen-title">Inventory</h1>
+          <div class="screen-sub">Raw value on hand</div>
         </div>
       </div>
-      <div class="empty">
-        <div class="empty-icon">▤</div>
-        <div class="empty-title">Reports need data first</div>
-        <div class="empty-sub">Yield trends and COGS reports unlock once production batches are being logged.</div>
+
+      <div id="inventory-summary"></div>
+
+      <div class="toolbar" style="margin-top:14px;">
+        <button class="btn btn-secondary" id="refresh-inventory-btn">↻ Refresh</button>
       </div>
+
+      <div id="inventory-list"></div>
     </section>
 
   </main>
 
   <nav class="tabbar">
     <button class="tab active" data-tab="intake"><div>◆</div><span class="tab-label">Intake</span></button>
-    <button class="tab" data-tab="production" disabled><div>⚙</div><span class="tab-label">Production</span></button>
-    <button class="tab" data-tab="reports" disabled><div>▤</div><span class="tab-label">Reports</span></button>
+    <button class="tab" data-tab="production"><div>⚙</div><span class="tab-label">Production</span></button>
+    <button class="tab" data-tab="inventory"><div>▥</div><span class="tab-label">Inventory</span></button>
   </nav>
 </div>
 
@@ -835,7 +848,7 @@ body {
 
       <!-- STEP 2: Photo flow -->
       <div id="intake-step-photo" style="display:none;">
-        <input type="file" id="photo-input" accept="image/*" style="display:none;">
+        <input type="file" id="photo-input" accept="image/*" capture="environment" style="display:none;">
         <img id="photo-preview" class="photo-preview" style="display:none;" alt="">
 
         <div id="extracting-ui" class="extracting" style="display:none;">
@@ -927,6 +940,139 @@ body {
       <button class="sheet-close" data-close="detail-sheet">×</button>
     </div>
     <div class="sheet-body" id="detail-body"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     PRODUCTION SHEET (single-step close-out)
+     ============================================================ -->
+<div class="sheet-backdrop" id="production-sheet">
+  <div class="sheet">
+    <div class="sheet-header">
+      <div class="sheet-title">Log Production Batch</div>
+      <button class="sheet-close" data-close="production-sheet">×</button>
+    </div>
+    <div class="sheet-body" id="production-sheet-body">
+      <!-- Step 1: pick recipe / sku -->
+      <div id="prod-step-recipe">
+        <div class="field-label" style="margin-bottom:14px;">Pick what you made</div>
+
+        <div class="field-label" style="font-size:10px;margin-top:18px;">Fresh Recipes</div>
+        <div class="capture-choice" id="fresh-recipe-picker"></div>
+
+        <div class="field-label" style="font-size:10px;margin-top:18px;">Jerky SKUs</div>
+        <div class="capture-choice" id="jerky-sku-picker"></div>
+      </div>
+
+      <!-- Step 2: log inputs + outputs -->
+      <div id="prod-step-form" style="display:none;">
+
+        <button class="btn btn-ghost" id="prod-back-btn" style="margin-bottom:18px;min-height:40px;font-size:12px;padding:0 14px;">← Change recipe</button>
+
+        <div id="prod-recipe-name" style="font-family:var(--font-display);font-weight:700;font-size:22px;margin-bottom:4px;"></div>
+        <div id="prod-recipe-sub" style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:20px;"></div>
+
+        <div class="field">
+          <label class="field-label">Production Date</label>
+          <input type="date" class="input" id="prod-date">
+        </div>
+
+        <!-- INPUTS -->
+        <div class="field-label" style="margin-top:24px;font-size:13px;color:var(--text);">Raw Inputs</div>
+        <div class="field-hint" style="margin-bottom:12px;margin-top:0;">
+          For each ingredient, enter how much you used. The system pulls from oldest open intake first.
+        </div>
+        <div id="prod-inputs"></div>
+        <button class="btn btn-secondary btn-full" id="prod-add-input" style="margin-top:8px;font-size:14px;">+ Add Ingredient</button>
+
+        <!-- FRESH OUTPUT -->
+        <div id="prod-output-fresh" style="display:none;">
+          <div class="field-label" style="margin-top:28px;font-size:13px;color:var(--text);">Finished Output</div>
+          <div class="field" style="margin-top:10px;">
+            <label class="field-label">Total Finished Weight (lbs)</label>
+            <input type="number" step="0.01" class="input input-lg" id="prod-finished-lbs" inputmode="decimal">
+            <div class="field-hint">Weigh everything packed up at the end of the batch.</div>
+          </div>
+
+          <div class="field-label" style="font-size:10px;margin-top:14px;">Pack Breakdown (optional)</div>
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label">1lb tubs</label>
+              <input type="number" step="1" class="input" id="prod-pack-1lb" inputmode="numeric" placeholder="0">
+            </div>
+            <div class="field">
+              <label class="field-label">2lb tubs</label>
+              <input type="number" step="1" class="input" id="prod-pack-2lb" inputmode="numeric" placeholder="0">
+            </div>
+          </div>
+        </div>
+
+        <!-- JERKY OUTPUT -->
+        <div id="prod-output-jerky" style="display:none;">
+          <div class="field-label" style="margin-top:28px;font-size:13px;color:var(--text);">Finished Output</div>
+
+          <div class="field" style="margin-top:10px;">
+            <label class="field-label">Total Finished Loose Weight (lbs)</label>
+            <input type="number" step="0.01" class="input input-lg" id="prod-loose-lbs" inputmode="decimal">
+            <div class="field-hint">Total dehydrated jerky weight before splitting into self-serve and bags.</div>
+          </div>
+
+          <div class="field">
+            <label class="field-label">Self-Serve Allocation (lbs)</label>
+            <input type="number" step="0.01" class="input" id="prod-self-serve" inputmode="decimal" placeholder="0">
+          </div>
+
+          <div class="field-row">
+            <div class="field">
+              <label class="field-label">8oz bags</label>
+              <input type="number" step="1" class="input" id="prod-bags-8oz" inputmode="numeric" placeholder="0">
+            </div>
+            <div class="field">
+              <label class="field-label">16oz bags</label>
+              <input type="number" step="1" class="input" id="prod-bags-16oz" inputmode="numeric" placeholder="0">
+            </div>
+          </div>
+
+          <div id="prod-jerky-recon" style="margin-top:10px;padding:12px;background:var(--bg-card);border-radius:var(--radius);font-family:var(--font-mono);font-size:12px;display:none;"></div>
+        </div>
+
+        <div class="field" style="margin-top:24px;">
+          <label class="field-label">Notes (optional)</label>
+          <textarea class="textarea" id="prod-notes" placeholder="Anything notable about this batch…"></textarea>
+        </div>
+
+        <div class="btn-row" style="margin-top:24px;">
+          <button class="btn btn-secondary" data-close="production-sheet">Cancel</button>
+          <button class="btn btn-primary" id="prod-save-btn">Save Batch</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     PRODUCTION RESULT SHEET
+     ============================================================ -->
+<div class="sheet-backdrop" id="prod-result-sheet">
+  <div class="sheet">
+    <div class="sheet-header">
+      <div class="sheet-title">Batch Saved</div>
+      <button class="sheet-close" data-close="prod-result-sheet">×</button>
+    </div>
+    <div class="sheet-body" id="prod-result-body"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     PRODUCTION DETAIL SHEET
+     ============================================================ -->
+<div class="sheet-backdrop" id="prod-detail-sheet">
+  <div class="sheet">
+    <div class="sheet-header">
+      <div class="sheet-title">Batch Detail</div>
+      <button class="sheet-close" data-close="prod-detail-sheet">×</button>
+    </div>
+    <div class="sheet-body" id="prod-detail-body"></div>
   </div>
 </div>
 
@@ -1053,6 +1199,10 @@ document.querySelectorAll('.tab').forEach(tab => {
     tab.classList.add('active');
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     document.querySelector(`.screen[data-screen="${tab.dataset.tab}"]`).classList.add('active');
+    // Load data for the new tab
+    if (tab.dataset.tab === 'production') loadProduction();
+    else if (tab.dataset.tab === 'inventory') loadInventory();
+    else if (tab.dataset.tab === 'intake') loadIntake();
   });
 });
 
@@ -1410,6 +1560,495 @@ document.getElementById('photo-save').addEventListener('click', async () => {
     toast('All saves failed — check fields', 'error');
   }
 });
+
+// ============================================================
+// PRODUCTION
+// ============================================================
+const prodState = {
+  recipes: null,         // cached from /api/recipes
+  selectedRecipe: null,  // {id, name, product_type, ingredients}
+  openIntakes: [],       // cached open intakes for input lookup
+  inputRows: [],         // [{ingredient, intake_id, weight}]
+};
+
+async function loadProduction() {
+  try {
+    const data = await api('/api/production?limit=50');
+    renderProduction(data.batches || []);
+  } catch (e) {
+    toast('Failed to load batches: ' + e.message, 'error');
+  }
+}
+
+function renderProduction(batches) {
+  const list = document.getElementById('production-list');
+  if (batches.length === 0) {
+    list.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">⚙</div>
+        <div class="empty-title">No batches logged yet</div>
+        <div class="empty-sub">Tap "Log Batch" to record a production run after pack-out is complete.</div>
+      </div>`;
+    return;
+  }
+  list.innerHTML = batches.map(b => {
+    const yieldStr = b.yield_pct ? b.yield_pct.toFixed(1) + '%' : '—';
+    const cogsStr = b.cogs_per_lb ? '$' + b.cogs_per_lb.toFixed(2) : '—';
+    const dateStr = (b.started_at || '').slice(0, 10);
+    return `
+      <div class="intake-card open" data-id="${b.id}">
+        <div class="intake-card-top">
+          <div class="intake-ingredient">${b.recipe_or_sku.replace(/_/g, ' ')}</div>
+          <div class="intake-id">${b.id}</div>
+        </div>
+        <div class="intake-stats">
+          <div class="stat"><div class="stat-label">Raw In</div><div class="stat-value">${fmtNum(b.total_raw_lbs)} lb</div></div>
+          <div class="stat"><div class="stat-label">Finished</div><div class="stat-value">${fmtNum(b.finished_lbs)} lb</div></div>
+          <div class="stat"><div class="stat-label">Yield</div><div class="stat-value accent">${yieldStr}</div></div>
+        </div>
+        <div class="intake-meta">
+          <span>◷ ${dateStr}</span>
+          <span>▸ COGS ${cogsStr}/lb</span>
+          <span>$${fmtNum(b.total_raw_cost)} raw</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('.intake-card').forEach(card => {
+    card.addEventListener('click', () => openProdDetail(card.dataset.id));
+  });
+}
+
+async function openProdDetail(id) {
+  try {
+    const data = await api('/api/production/' + id);
+    const b = data.batch;
+    const inputs = data.inputs || [];
+    const out = b.output_data_json ? JSON.parse(b.output_data_json) : {};
+
+    let outputHtml = '';
+    if (out.mode === 'fresh') {
+      const packs = out.pack_breakdown || {};
+      const packLines = Object.entries(packs).filter(([k,v])=>v>0)
+        .map(([k,v])=>`${v}× ${k}`).join(' · ');
+      outputHtml = `
+        <div class="intake-stats" style="margin-bottom:16px;">
+          <div class="stat"><div class="stat-label">Finished</div><div class="stat-value accent">${fmtNum(out.finished_lbs)} lb</div></div>
+          <div class="stat"><div class="stat-label">Yield</div><div class="stat-value">${b.yield_pct.toFixed(1)}%</div></div>
+          <div class="stat"><div class="stat-label">COGS/lb</div><div class="stat-value">$${b.cogs_per_lb.toFixed(2)}</div></div>
+        </div>
+        ${packLines ? `<div class="field-hint" style="margin-bottom:16px;">Packs: ${packLines}</div>` : ''}`;
+    } else if (out.mode === 'jerky') {
+      const recon = out.reconciliation_diff;
+      outputHtml = `
+        <div class="intake-stats" style="margin-bottom:10px;">
+          <div class="stat"><div class="stat-label">Loose Total</div><div class="stat-value accent">${fmtNum(out.finished_loose_lbs)} lb</div></div>
+          <div class="stat"><div class="stat-label">Yield</div><div class="stat-value">${b.yield_pct.toFixed(1)}%</div></div>
+          <div class="stat"><div class="stat-label">COGS/lb</div><div class="stat-value">$${b.cogs_per_lb.toFixed(2)}</div></div>
+        </div>
+        <div class="intake-stats" style="margin-bottom:10px;">
+          <div class="stat"><div class="stat-label">Self-Serve</div><div class="stat-value">${fmtNum(out.self_serve_lbs)} lb</div></div>
+          <div class="stat"><div class="stat-label">8oz Bags</div><div class="stat-value">${out.bags_8oz}</div></div>
+          <div class="stat"><div class="stat-label">16oz Bags</div><div class="stat-value">${out.bags_16oz}</div></div>
+        </div>
+        <div class="field-hint" style="margin-bottom:16px;">
+          Allocated: ${fmtNum(out.allocated_lbs)} lb · Diff: ${fmtNum(recon)} lb ${Math.abs(recon)>0.5?'⚠':''}
+        </div>`;
+    }
+
+    const inputLines = inputs.map(i => `
+      <div style="background:var(--bg-card);padding:10px;border-radius:var(--radius);margin-bottom:6px;font-family:var(--font-mono);font-size:12px;">
+        <div style="display:flex;justify-content:space-between;">
+          <span style="text-transform:capitalize;">${i.ingredient.replace(/_/g,' ')}</span>
+          <span>${fmtNum(i.weight_lbs)} lb · $${i.cost_usd.toFixed(2)}</span>
+        </div>
+        <div style="color:var(--text-faint);font-size:10px;margin-top:4px;">${i.intake_batch_id || ''}</div>
+      </div>`).join('');
+
+    document.getElementById('prod-detail-body').innerHTML = `
+      <div class="field">
+        <div class="field-label">Batch ID</div>
+        <div style="font-family:var(--font-mono);font-size:13px;color:var(--accent);">${b.id}</div>
+      </div>
+      <div class="field-label" style="margin-top:14px;">Output</div>
+      ${outputHtml}
+      <div class="field-label" style="margin-top:14px;">Raw Inputs (${inputs.length})</div>
+      ${inputLines}
+      ${b.notes ? `<div class="field" style="margin-top:14px;"><div class="field-label">Notes</div><div style="background:var(--bg-card);padding:10px;border-radius:var(--radius);font-family:var(--font-mono);font-size:12px;">${escapeHtml(b.notes)}</div></div>` : ''}
+    `;
+    openSheet('prod-detail-sheet');
+  } catch (e) {
+    toast('Failed to load batch: ' + e.message, 'error');
+  }
+}
+
+document.getElementById('refresh-production-btn').addEventListener('click', loadProduction);
+
+// ----- New batch flow -----
+document.getElementById('new-production-btn').addEventListener('click', async () => {
+  // Reset state
+  prodState.selectedRecipe = null;
+  prodState.inputRows = [];
+  document.getElementById('prod-step-recipe').style.display = 'block';
+  document.getElementById('prod-step-form').style.display = 'none';
+
+  // Load recipes if not cached
+  if (!prodState.recipes) {
+    try {
+      const data = await api('/api/recipes');
+      prodState.recipes = data.recipes || [];
+    } catch (e) { toast('Failed to load recipes: ' + e.message, 'error'); return; }
+  }
+
+  // Render recipe pickers
+  const fresh = prodState.recipes.filter(r => r.product_type === 'fresh');
+  const jerky = prodState.recipes.filter(r => r.product_type === 'jerky');
+
+  document.getElementById('fresh-recipe-picker').innerHTML = fresh.map(r => `
+    <button class="capture-btn" data-recipe="${r.id}">
+      <span class="capture-icon">◆</span>
+      <div class="capture-label">${r.name.replace(' Recipe','')}</div>
+    </button>`).join('');
+
+  document.getElementById('jerky-sku-picker').innerHTML = jerky.map(r => `
+    <button class="capture-btn" data-recipe="${r.id}">
+      <span class="capture-icon">▣</span>
+      <div class="capture-label">${r.name.replace(' Jerky','')}</div>
+    </button>`).join('');
+
+  document.querySelectorAll('[data-recipe]').forEach(btn => {
+    btn.addEventListener('click', () => selectRecipeForBatch(btn.dataset.recipe));
+  });
+
+  openSheet('production-sheet');
+});
+
+document.getElementById('prod-back-btn').addEventListener('click', () => {
+  document.getElementById('prod-step-recipe').style.display = 'block';
+  document.getElementById('prod-step-form').style.display = 'none';
+});
+
+async function selectRecipeForBatch(recipeId) {
+  const recipe = prodState.recipes.find(r => r.id === recipeId);
+  if (!recipe) return;
+  prodState.selectedRecipe = recipe;
+
+  // Load all open intakes for this location
+  try {
+    const data = await api('/api/intake?open_only=1');
+    prodState.openIntakes = data.batches || [];
+  } catch (e) { toast('Failed to load intakes: ' + e.message, 'error'); return; }
+
+  // Switch UI
+  document.getElementById('prod-step-recipe').style.display = 'none';
+  document.getElementById('prod-step-form').style.display = 'block';
+  document.getElementById('prod-recipe-name').textContent = recipe.name;
+  document.getElementById('prod-recipe-sub').textContent = recipe.product_type === 'fresh' ? 'Fresh Recipe' : 'Jerky SKU';
+  document.getElementById('prod-date').value = new Date().toISOString().slice(0,10);
+
+  // Show right output section
+  document.getElementById('prod-output-fresh').style.display = recipe.product_type === 'fresh' ? 'block' : 'none';
+  document.getElementById('prod-output-jerky').style.display = recipe.product_type === 'jerky' ? 'block' : 'none';
+
+  // Reset output fields
+  ['prod-finished-lbs','prod-pack-1lb','prod-pack-2lb',
+   'prod-loose-lbs','prod-self-serve','prod-bags-8oz','prod-bags-16oz','prod-notes'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('prod-jerky-recon').style.display = 'none';
+
+  // Pre-populate inputs from recipe template (fresh) or empty (jerky)
+  prodState.inputRows = [];
+  if (recipe.product_type === 'fresh' && recipe.ingredients) {
+    for (const ing of recipe.ingredients) {
+      // Find an open intake matching this ingredient
+      const matching = prodState.openIntakes
+        .filter(b => b.ingredient === ing.ingredient)
+        .sort((a,b) => a.date_received.localeCompare(b.date_received)); // FIFO
+      prodState.inputRows.push({
+        ingredient: ing.ingredient,
+        intake_id: matching[0] ? matching[0].id : null,
+        weight: ing.weight_lbs,
+        suggested_weight: ing.weight_lbs,
+        no_intake: matching.length === 0
+      });
+    }
+  } else {
+    // Jerky: add one empty row by default for the protein
+    prodState.inputRows.push({ ingredient: '', intake_id: null, weight: '' });
+  }
+
+  renderInputRows();
+}
+
+function renderInputRows() {
+  const container = document.getElementById('prod-inputs');
+  // Build ingredient list grouped by ingredient name
+  const ingredientGroups = {};
+  for (const b of prodState.openIntakes) {
+    if (!ingredientGroups[b.ingredient]) ingredientGroups[b.ingredient] = [];
+    ingredientGroups[b.ingredient].push(b);
+  }
+  for (const ing of Object.keys(ingredientGroups)) {
+    ingredientGroups[ing].sort((a,b) => a.date_received.localeCompare(b.date_received));
+  }
+  const allIngredients = Object.keys(ingredientGroups).sort();
+
+  container.innerHTML = prodState.inputRows.map((row, idx) => {
+    const intakesForIng = row.ingredient ? (ingredientGroups[row.ingredient] || []) : [];
+    const noIntakeWarn = row.ingredient && intakesForIng.length === 0
+      ? `<div style="color:var(--warn);font-family:var(--font-mono);font-size:10px;margin-top:6px;">⚠ No open intake for "${row.ingredient}". Log an intake first.</div>` : '';
+
+    return `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:10px;" data-row="${idx}">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+        <select class="select" data-field="ingredient" style="flex:1;height:44px;font-size:13px;">
+          <option value="">— pick ingredient —</option>
+          ${allIngredients.map(i => `<option value="${i}" ${i===row.ingredient?'selected':''}>${i.replace(/_/g,' ')}</option>`).join('')}
+        </select>
+        <button class="line-item-remove" data-remove="${idx}" style="width:auto;margin:0;padding:8px 12px;">✕</button>
+      </div>
+      <div class="field-row">
+        <select class="select" data-field="intake_id" style="height:44px;font-size:11px;">
+          ${intakesForIng.length === 0 ? '<option value="">— no intakes —</option>' : ''}
+          ${intakesForIng.map(b => `<option value="${b.id}" ${b.id===row.intake_id?'selected':''}>${b.date_received} · ${fmtNum(b.remaining_lbs)} lb @ $${(b.cost_usd/b.weight_lbs).toFixed(2)}/lb</option>`).join('')}
+        </select>
+        <input type="number" step="0.01" class="input" data-field="weight" value="${row.weight||''}" placeholder="lbs" inputmode="decimal" style="height:44px;">
+      </div>
+      ${row.suggested_weight ? `<div class="field-hint">Recipe calls for ${fmtNum(row.suggested_weight)} lb</div>` : ''}
+      ${noIntakeWarn}
+    </div>`;
+  }).join('');
+
+  // Wire up change handlers
+  container.querySelectorAll('[data-row]').forEach(rowEl => {
+    const idx = parseInt(rowEl.dataset.row);
+    rowEl.querySelectorAll('[data-field]').forEach(input => {
+      input.addEventListener('change', () => {
+        const field = input.dataset.field;
+        if (field === 'ingredient') {
+          prodState.inputRows[idx].ingredient = input.value;
+          // Auto-pick oldest intake
+          const matches = ingredientGroups[input.value] || [];
+          prodState.inputRows[idx].intake_id = matches[0] ? matches[0].id : null;
+          renderInputRows();
+        } else if (field === 'intake_id') {
+          prodState.inputRows[idx].intake_id = input.value;
+        } else if (field === 'weight') {
+          prodState.inputRows[idx].weight = parseFloat(input.value) || '';
+        }
+      });
+    });
+    rowEl.querySelector('[data-remove]').addEventListener('click', () => {
+      prodState.inputRows.splice(idx, 1);
+      renderInputRows();
+    });
+  });
+}
+
+document.getElementById('prod-add-input').addEventListener('click', () => {
+  prodState.inputRows.push({ ingredient: '', intake_id: null, weight: '' });
+  renderInputRows();
+});
+
+// Jerky reconciliation live calc
+['prod-loose-lbs','prod-self-serve','prod-bags-8oz','prod-bags-16oz'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', updateJerkyRecon);
+});
+
+function updateJerkyRecon() {
+  const loose = parseFloat(document.getElementById('prod-loose-lbs').value) || 0;
+  const ss = parseFloat(document.getElementById('prod-self-serve').value) || 0;
+  const b8 = parseInt(document.getElementById('prod-bags-8oz').value) || 0;
+  const b16 = parseInt(document.getElementById('prod-bags-16oz').value) || 0;
+  const allocated = ss + b8*0.5 + b16*1.0;
+  const diff = loose - allocated;
+  const reconEl = document.getElementById('prod-jerky-recon');
+  if (loose > 0) {
+    reconEl.style.display = 'block';
+    const flag = Math.abs(diff) > 0.5;
+    reconEl.style.borderLeft = flag ? '3px solid var(--warn)' : '3px solid var(--ok)';
+    reconEl.innerHTML = `
+      Loose: <strong>${fmtNum(loose)} lb</strong> · Allocated: <strong>${fmtNum(allocated)} lb</strong><br>
+      Diff: <strong style="color:${flag?'var(--warn)':'var(--ok)'}">${diff>=0?'+':''}${fmtNum(diff)} lb</strong>
+      ${flag ? ' — check entries' : ' ✓'}`;
+  } else {
+    reconEl.style.display = 'none';
+  }
+}
+
+// Save batch
+document.getElementById('prod-save-btn').addEventListener('click', async () => {
+  const recipe = prodState.selectedRecipe;
+  if (!recipe) return toast('No recipe selected', 'error');
+
+  const date = document.getElementById('prod-date').value;
+  if (!date) return toast('Date required', 'error');
+
+  // Build inputs
+  const inputs = [];
+  for (const row of prodState.inputRows) {
+    if (!row.ingredient || !row.intake_id || !row.weight || row.weight <= 0) continue;
+    inputs.push({ intake_batch_id: row.intake_id, weight_lbs: parseFloat(row.weight) });
+  }
+  if (inputs.length === 0) return toast('Add at least one input with a valid weight', 'error');
+
+  const payload = {
+    product_type: recipe.product_type,
+    recipe_or_sku: recipe.id,
+    date,
+    inputs,
+    notes: document.getElementById('prod-notes').value.trim() || null
+  };
+
+  if (recipe.product_type === 'fresh') {
+    payload.finished_lbs = parseFloat(document.getElementById('prod-finished-lbs').value);
+    if (!payload.finished_lbs || payload.finished_lbs <= 0) return toast('Finished weight required', 'error');
+    payload.pack_breakdown = {
+      '1lb': parseInt(document.getElementById('prod-pack-1lb').value) || 0,
+      '2lb': parseInt(document.getElementById('prod-pack-2lb').value) || 0,
+    };
+  } else {
+    payload.finished_loose_lbs = parseFloat(document.getElementById('prod-loose-lbs').value);
+    if (!payload.finished_loose_lbs || payload.finished_loose_lbs <= 0) return toast('Total finished loose weight required', 'error');
+    payload.self_serve_lbs = parseFloat(document.getElementById('prod-self-serve').value) || 0;
+    payload.bags_8oz = parseInt(document.getElementById('prod-bags-8oz').value) || 0;
+    payload.bags_16oz = parseInt(document.getElementById('prod-bags-16oz').value) || 0;
+  }
+
+  try {
+    const res = await api('/api/production', { method: 'POST', body: JSON.stringify(payload) });
+    closeSheet('production-sheet');
+    showProdResult(res.batch, res.historical);
+    loadProduction();
+  } catch (e) {
+    toast('Save failed: ' + e.message, 'error');
+  }
+});
+
+function showProdResult(batch, historical) {
+  const out = batch.output_data_json ? JSON.parse(batch.output_data_json) : {};
+  let histHtml = '';
+  if (historical) {
+    const flag = historical.flag === 'low_yield';
+    histHtml = `
+      <div style="margin-top:16px;padding:14px;border-radius:var(--radius);background:${flag?'rgba(255,159,67,0.1)':'var(--bg-card)'};border-left:3px solid ${flag?'var(--warn)':'var(--ok)'};">
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;">
+          ${flag ? '⚠ Low Yield Alert' : 'Vs. History'}
+        </div>
+        <div style="font-family:var(--font-mono);font-size:13px;">
+          Last ${historical.batch_count} batches avg: <strong>${historical.avg_yield_pct.toFixed(1)}%</strong><br>
+          This batch: <strong style="color:${flag?'var(--warn)':'var(--accent)'}">${batch.yield_pct.toFixed(1)}%</strong>
+        </div>
+        ${flag ? '<div style="font-family:var(--font-mono);font-size:11px;color:var(--warn);margin-top:8px;">Possible waste, measurement error, or process issue.</div>' : ''}
+      </div>`;
+  } else {
+    histHtml = `
+      <div style="margin-top:16px;padding:14px;border-radius:var(--radius);background:var(--bg-card);">
+        <div style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);">
+          First batch of this product. Yield baseline starts building from here.
+        </div>
+      </div>`;
+  }
+
+  let cogsExtra = '';
+  if (out.mode === 'jerky') {
+    const cogsPerLb = batch.cogs_per_lb;
+    cogsExtra = `
+      <div class="intake-stats" style="margin-top:10px;">
+        <div class="stat"><div class="stat-label">COGS / 8oz bag</div><div class="stat-value">$${(cogsPerLb*0.5).toFixed(2)}</div></div>
+        <div class="stat"><div class="stat-label">COGS / 16oz bag</div><div class="stat-value">$${(cogsPerLb*1.0).toFixed(2)}</div></div>
+        <div class="stat"><div class="stat-label">COGS / lb loose</div><div class="stat-value">$${cogsPerLb.toFixed(2)}</div></div>
+      </div>
+      <div class="field-hint">Bag COGS shown above is raw cost only. Add packaging cost separately for total per-bag cost.</div>`;
+  }
+
+  document.getElementById('prod-result-body').innerHTML = `
+    <div style="text-align:center;padding:10px 0 20px;">
+      <div style="font-size:36px;color:var(--accent);">✓</div>
+      <div style="font-family:var(--font-display);font-size:18px;margin-top:8px;">${batch.recipe_or_sku.replace(/_/g,' ')}</div>
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);margin-top:4px;">${batch.id}</div>
+    </div>
+    <div class="intake-stats">
+      <div class="stat"><div class="stat-label">Raw In</div><div class="stat-value">${fmtNum(batch.total_raw_lbs)} lb</div></div>
+      <div class="stat"><div class="stat-label">Finished</div><div class="stat-value">${fmtNum(batch.finished_lbs)} lb</div></div>
+      <div class="stat"><div class="stat-label">Yield</div><div class="stat-value accent">${batch.yield_pct.toFixed(1)}%</div></div>
+    </div>
+    <div class="intake-stats" style="margin-top:8px;">
+      <div class="stat"><div class="stat-label">Raw Cost</div><div class="stat-value">$${fmtNum(batch.total_raw_cost)}</div></div>
+      <div class="stat"><div class="stat-label">COGS / lb</div><div class="stat-value accent">$${batch.cogs_per_lb.toFixed(2)}</div></div>
+      <div class="stat"><div class="stat-label">Mode</div><div class="stat-value" style="text-transform:capitalize;">${out.mode}</div></div>
+    </div>
+    ${cogsExtra}
+    ${histHtml}
+    <div class="btn-row" style="margin-top:24px;">
+      <button class="btn btn-primary btn-full" data-close="prod-result-sheet">Done</button>
+    </div>`;
+
+  document.querySelectorAll('[data-close="prod-result-sheet"]').forEach(b => {
+    b.addEventListener('click', () => closeSheet('prod-result-sheet'));
+  });
+
+  openSheet('prod-result-sheet');
+}
+
+// ============================================================
+// INVENTORY
+// ============================================================
+async function loadInventory() {
+  try {
+    const data = await api('/api/inventory');
+    renderInventory(data);
+  } catch (e) {
+    toast('Failed to load inventory: ' + e.message, 'error');
+  }
+}
+
+function renderInventory(data) {
+  const t = data.totals;
+  document.getElementById('inventory-summary').innerHTML = `
+    <div style="background:var(--bg-elev);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--radius);padding:18px;">
+      <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px;">Total Raw Inventory Value</div>
+      <div style="font-family:var(--font-display);font-weight:700;font-size:34px;color:var(--accent);letter-spacing:-0.02em;">$${t.total_value_usd.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);margin-top:8px;">
+        ${fmtNum(t.total_lbs)} lbs · ${t.ingredient_count} ingredients · ${t.open_batch_count} open batches
+      </div>
+    </div>`;
+
+  const list = document.getElementById('inventory-list');
+  if (data.ingredients.length === 0) {
+    list.innerHTML = `
+      <div class="empty">
+        <div class="empty-icon">▥</div>
+        <div class="empty-title">No raw inventory on hand</div>
+        <div class="empty-sub">Log some intakes to start tracking inventory value.</div>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = data.ingredients.map(g => {
+    const ageFlag = g.oldest_age_days > 30 ? `<span style="color:var(--warn);">⚠ ${g.oldest_age_days}d old</span>` : `${g.oldest_age_days}d old`;
+    return `
+      <div class="intake-card open" style="margin-bottom:8px;">
+        <div class="intake-card-top">
+          <div class="intake-ingredient">${g.ingredient.replace(/_/g,' ')}</div>
+          <div class="intake-id">$${g.total_value.toFixed(2)}</div>
+        </div>
+        <div class="intake-stats">
+          <div class="stat"><div class="stat-label">On Hand</div><div class="stat-value">${fmtNum(g.total_lbs)} lb</div></div>
+          <div class="stat"><div class="stat-label">Avg $/lb</div><div class="stat-value">$${g.avg_cost_per_lb.toFixed(2)}</div></div>
+          <div class="stat"><div class="stat-label">Batches</div><div class="stat-value">${g.batch_count}</div></div>
+        </div>
+        <div class="intake-meta">
+          <span>◷ Oldest: ${ageFlag}</span>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+document.getElementById('refresh-inventory-btn').addEventListener('click', loadInventory);
 
 // ============================================================
 // INIT
