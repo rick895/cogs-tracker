@@ -1043,10 +1043,36 @@ body {
 
         <div class="btn-row" style="margin-top:24px;">
           <button class="btn btn-secondary" data-close="production-sheet">Cancel</button>
-          <button class="btn btn-primary" id="prod-save-btn">Save Batch</button>
+          <button class="btn btn-primary" id="prod-save-btn">Preview Batch →</button>
         </div>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     PRODUCTION PREVIEW SHEET (always required before save)
+     ============================================================ -->
+<div class="sheet-backdrop" id="prod-preview-sheet">
+  <div class="sheet">
+    <div class="sheet-header">
+      <div class="sheet-title">Review Batch</div>
+      <button class="sheet-close" data-close="prod-preview-sheet">×</button>
+    </div>
+    <div class="sheet-body" id="prod-preview-body"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     SHOPIFY NEGATIVE WARNING SHEET (edit/delete safeguard)
+     ============================================================ -->
+<div class="sheet-backdrop" id="shopify-warn-sheet">
+  <div class="sheet">
+    <div class="sheet-header">
+      <div class="sheet-title">⚠ Shopify Inventory Warning</div>
+      <button class="sheet-close" data-close="shopify-warn-sheet">×</button>
+    </div>
+    <div class="sheet-body" id="shopify-warn-body"></div>
   </div>
 </div>
 
@@ -1675,7 +1701,19 @@ async function openProdDetail(id) {
       <div class="field-label" style="margin-top:14px;">Raw Inputs (${inputs.length})</div>
       ${inputLines}
       ${b.notes ? `<div class="field" style="margin-top:14px;"><div class="field-label">Notes</div><div style="background:var(--bg-card);padding:10px;border-radius:var(--radius);font-family:var(--font-mono);font-size:12px;">${escapeHtml(b.notes)}</div></div>` : ''}
+
+      <div class="btn-row" style="margin-top:24px;">
+        <button class="btn btn-secondary" id="prod-edit-btn">✎ Edit</button>
+        <button class="btn btn-danger" id="prod-delete-btn">Delete</button>
+      </div>
+      <div class="field-hint" style="margin-top:8px;text-align:center;">
+        Edits restore intake balances and re-push Shopify inventory deltas. All changes audit-logged.
+      </div>
     `;
+
+    document.getElementById('prod-edit-btn').addEventListener('click', () => beginEditBatch(b, inputs));
+    document.getElementById('prod-delete-btn').addEventListener('click', () => beginDeleteBatch(b));
+
     openSheet('prod-detail-sheet');
   } catch (e) {
     toast('Failed to load batch: ' + e.message, 'error');
@@ -1686,9 +1724,11 @@ document.getElementById('refresh-production-btn').addEventListener('click', load
 
 // ----- New batch flow -----
 document.getElementById('new-production-btn').addEventListener('click', async () => {
-  // Reset state
+  // Reset state (creating, not editing)
   prodState.selectedRecipe = null;
   prodState.inputRows = [];
+  prodState.editingId = null;
+  prodState.pendingPayload = null;
   document.getElementById('prod-step-recipe').style.display = 'block';
   document.getElementById('prod-step-form').style.display = 'none';
 
@@ -1879,54 +1919,396 @@ function updateJerkyRecon() {
   }
 }
 
-// Save batch
-document.getElementById('prod-save-btn').addEventListener('click', async () => {
+// ─────────────────────────────────────────────────────────────
+// Build payload from form. Returns null+toast if invalid. Used by create + edit.
+// ─────────────────────────────────────────────────────────────
+function buildProductionPayload() {
   const recipe = prodState.selectedRecipe;
-  if (!recipe) return toast('No recipe selected', 'error');
-
+  if (!recipe) { toast('No recipe selected', 'error'); return null; }
   const date = document.getElementById('prod-date').value;
-  if (!date) return toast('Date required', 'error');
+  if (!date) { toast('Date required', 'error'); return null; }
 
-  // Build inputs
   const inputs = [];
+  const inputDetails = [];
   for (const row of prodState.inputRows) {
     if (!row.ingredient || !row.intake_id || !row.weight || row.weight <= 0) continue;
-    inputs.push({ intake_batch_id: row.intake_id, weight_lbs: parseFloat(row.weight) });
+    const intake = prodState.openIntakes.find(b => b.id === row.intake_id);
+    const costPerLb = intake ? (intake.cost_usd / intake.weight_lbs) : 0;
+    const weight = parseFloat(row.weight);
+    inputs.push({ intake_batch_id: row.intake_id, weight_lbs: weight });
+    inputDetails.push({
+      ingredient: row.ingredient, intake_id: row.intake_id,
+      weight_lbs: weight, cost_per_lb: costPerLb, cost_usd: costPerLb * weight
+    });
   }
-  if (inputs.length === 0) return toast('Add at least one input with a valid weight', 'error');
+  if (inputs.length === 0) { toast('Add at least one input with a valid weight', 'error'); return null; }
 
   const payload = {
-    product_type: recipe.product_type,
-    recipe_or_sku: recipe.id,
-    date,
-    inputs,
-    notes: document.getElementById('prod-notes').value.trim() || null
+    product_type: recipe.product_type, recipe_or_sku: recipe.id,
+    date, inputs, notes: document.getElementById('prod-notes').value.trim() || null
   };
-
   if (recipe.product_type === 'fresh') {
     payload.finished_lbs = parseFloat(document.getElementById('prod-finished-lbs').value);
-    if (!payload.finished_lbs || payload.finished_lbs <= 0) return toast('Finished weight required', 'error');
+    if (!payload.finished_lbs || payload.finished_lbs <= 0) { toast('Finished weight required', 'error'); return null; }
     payload.pack_breakdown = {
       '1lb': parseInt(document.getElementById('prod-pack-1lb').value) || 0,
       '2lb': parseInt(document.getElementById('prod-pack-2lb').value) || 0,
     };
   } else {
     payload.finished_loose_lbs = parseFloat(document.getElementById('prod-loose-lbs').value);
-    if (!payload.finished_loose_lbs || payload.finished_loose_lbs <= 0) return toast('Total finished loose weight required', 'error');
+    if (!payload.finished_loose_lbs || payload.finished_loose_lbs <= 0) { toast('Total finished loose weight required', 'error'); return null; }
     payload.self_serve_lbs = parseFloat(document.getElementById('prod-self-serve').value) || 0;
     payload.bags_8oz = parseInt(document.getElementById('prod-bags-8oz').value) || 0;
     payload.bags_16oz = parseInt(document.getElementById('prod-bags-16oz').value) || 0;
   }
+  return { payload, inputDetails, recipe };
+}
+
+async function fetchRecipeYieldHistory(recipeId) {
+  try {
+    const data = await api('/api/production?limit=50&recipe=' + encodeURIComponent(recipeId));
+    const closed = (data.batches || []).filter(b => b.yield_pct != null);
+    const filtered = prodState.editingId ? closed.filter(b => b.id !== prodState.editingId) : closed;
+    if (filtered.length === 0) return null;
+    const avg = filtered.reduce((s, b) => s + b.yield_pct, 0) / filtered.length;
+    return { count: filtered.length, avg };
+  } catch { return null; }
+}
+
+// Preview button — same handler for new batches and edits
+document.getElementById('prod-save-btn').addEventListener('click', async () => {
+  const built = buildProductionPayload();
+  if (!built) return;
+  const { payload, inputDetails, recipe } = built;
+
+  const totalRawLbs = inputDetails.reduce((s, i) => s + i.weight_lbs, 0);
+  const totalRawCost = inputDetails.reduce((s, i) => s + i.cost_usd, 0);
+  const finishedLbs = recipe.product_type === 'fresh' ? payload.finished_lbs : payload.finished_loose_lbs;
+  const yieldPct = (finishedLbs / totalRawLbs) * 100;
+  const cogsPerLb = totalRawCost / finishedLbs;
+
+  const history = await fetchRecipeYieldHistory(recipe.id);
+  let yieldFlag = null;
+  let yieldFlagText = '';
+  if (history && history.count >= 5) {
+    const delta = yieldPct - history.avg;
+    if (delta < -8) {
+      yieldFlag = 'low';
+      yieldFlagText = `⚠ ${(-delta).toFixed(1)}% below ${recipe.name} avg of ${history.avg.toFixed(1)}%`;
+    } else if (delta > 12) {
+      yieldFlag = 'high';
+      yieldFlagText = `⚠ ${delta.toFixed(1)}% above ${recipe.name} avg of ${history.avg.toFixed(1)}% — sanity check inputs`;
+    }
+  }
+
+  let jerkyReconText = '';
+  if (recipe.product_type === 'jerky') {
+    const allocated = payload.self_serve_lbs + payload.bags_8oz * 0.5 + payload.bags_16oz * 1.0;
+    const diff = payload.finished_loose_lbs - allocated;
+    if (Math.abs(diff) > 0.5) {
+      jerkyReconText = `⚠ Allocated ${fmtNum(allocated)} lb vs. loose ${fmtNum(payload.finished_loose_lbs)} lb — off by ${fmtNum(diff)} lb`;
+    }
+  }
+
+  renderPreview({ payload, inputDetails, recipe, totalRawLbs, totalRawCost,
+    finishedLbs, yieldPct, cogsPerLb, history, yieldFlagText, jerkyReconText, yieldFlag });
+});
+
+function renderPreview(ctx) {
+  const { payload, inputDetails, recipe, totalRawLbs, totalRawCost,
+    finishedLbs, yieldPct, cogsPerLb, history, yieldFlagText, jerkyReconText, yieldFlag } = ctx;
+  const isEdit = !!prodState.editingId;
+  const yieldColor = yieldFlag ? 'var(--warn)' : 'var(--accent)';
+
+  const inputsHtml = inputDetails.map(i => `
+    <div style="background:var(--bg-card);padding:10px;border-radius:var(--radius);margin-bottom:6px;font-family:var(--font-mono);font-size:12px;">
+      <div style="display:flex;justify-content:space-between;">
+        <span style="text-transform:capitalize;">${i.ingredient.replace(/_/g, ' ')}</span>
+        <span>${fmtNum(i.weight_lbs)} lb · $${i.cost_usd.toFixed(2)}</span>
+      </div>
+      <div style="color:var(--text-faint);font-size:10px;margin-top:4px;display:flex;justify-content:space-between;">
+        <span>${i.intake_id}</span><span>$${i.cost_per_lb.toFixed(2)}/lb</span>
+      </div>
+    </div>`).join('');
+
+  let outputHtml = '';
+  if (recipe.product_type === 'fresh') {
+    const packs = payload.pack_breakdown || {};
+    const c1 = packs['1lb'] || 0, c2 = packs['2lb'] || 0;
+    const packLbs = c1 + c2 * 2;
+    const packDelta = packLbs - finishedLbs;
+    const packCheck = (c1 + c2) > 0 ? `
+      <div style="margin-top:6px;font-family:var(--font-mono);font-size:11px;color:${Math.abs(packDelta)>2?'var(--warn)':'var(--text-dim)'};">
+        Packs total: ${fmtNum(packLbs)} lb (${c1}× 1lb + ${c2}× 2lb)${Math.abs(packDelta) > 2 ? ` ⚠ vs finished ${fmtNum(finishedLbs)} lb` : ''}
+      </div>` : '';
+    outputHtml = `
+      <div class="intake-stats">
+        <div class="stat"><div class="stat-label">Finished</div><div class="stat-value">${fmtNum(finishedLbs)} lb</div></div>
+        <div class="stat"><div class="stat-label">Yield</div><div class="stat-value" style="color:${yieldColor}">${yieldPct.toFixed(1)}%</div></div>
+        <div class="stat"><div class="stat-label">COGS/lb</div><div class="stat-value">$${cogsPerLb.toFixed(2)}</div></div>
+      </div>${packCheck}`;
+  } else {
+    outputHtml = `
+      <div class="intake-stats">
+        <div class="stat"><div class="stat-label">Loose</div><div class="stat-value">${fmtNum(finishedLbs)} lb</div></div>
+        <div class="stat"><div class="stat-label">Yield</div><div class="stat-value" style="color:${yieldColor}">${yieldPct.toFixed(1)}%</div></div>
+        <div class="stat"><div class="stat-label">COGS/lb</div><div class="stat-value">$${cogsPerLb.toFixed(2)}</div></div>
+      </div>
+      <div class="intake-stats" style="margin-top:8px;">
+        <div class="stat"><div class="stat-label">Self-Serve</div><div class="stat-value">${fmtNum(payload.self_serve_lbs)} lb</div></div>
+        <div class="stat"><div class="stat-label">8oz Bags</div><div class="stat-value">${payload.bags_8oz}</div></div>
+        <div class="stat"><div class="stat-label">16oz Bags</div><div class="stat-value">${payload.bags_16oz}</div></div>
+      </div>`;
+  }
+
+  const warningsHtml = [
+    yieldFlagText ? `<div style="background:rgba(255,159,67,0.1);border-left:3px solid var(--warn);padding:12px;border-radius:var(--radius);margin-bottom:10px;font-family:var(--font-mono);font-size:12px;">${yieldFlagText}</div>` : '',
+    jerkyReconText ? `<div style="background:rgba(255,159,67,0.1);border-left:3px solid var(--warn);padding:12px;border-radius:var(--radius);margin-bottom:10px;font-family:var(--font-mono);font-size:12px;">${jerkyReconText}</div>` : ''
+  ].filter(Boolean).join('');
+
+  const histHtml = history
+    ? `<div class="field-hint">vs. last ${history.count} ${recipe.name} batches: ${history.avg.toFixed(1)}% avg yield</div>`
+    : (isEdit ? `<div class="field-hint">No other batches of this recipe to compare against.</div>`
+              : `<div class="field-hint">First batch of this recipe — yield baseline starts here.</div>`);
+
+  document.getElementById('prod-preview-body').innerHTML = `
+    <div style="text-align:center;padding:0 0 18px;">
+      <div style="font-family:var(--font-display);font-weight:700;font-size:20px;text-transform:capitalize;">${recipe.name}</div>
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);letter-spacing:0.1em;text-transform:uppercase;margin-top:4px;">${payload.date} · ${recipe.product_type}${isEdit?' · EDIT':''}</div>
+    </div>
+    ${warningsHtml}
+    <div class="field-label" style="font-size:13px;color:var(--text);">Output</div>
+    ${outputHtml}
+    ${histHtml}
+    <div class="field-label" style="margin-top:20px;font-size:13px;color:var(--text);">Cost Summary</div>
+    <div class="intake-stats">
+      <div class="stat"><div class="stat-label">Total Raw</div><div class="stat-value">${fmtNum(totalRawLbs)} lb</div></div>
+      <div class="stat"><div class="stat-label">Raw Cost</div><div class="stat-value">$${fmtNum(totalRawCost)}</div></div>
+      <div class="stat"><div class="stat-label">$/lb Finished</div><div class="stat-value accent">$${cogsPerLb.toFixed(2)}</div></div>
+    </div>
+    <div class="field-label" style="margin-top:20px;font-size:13px;color:var(--text);">Raw Inputs (${inputDetails.length})</div>
+    ${inputsHtml}
+    ${payload.notes ? `<div class="field-label" style="margin-top:20px;font-size:13px;color:var(--text);">Notes</div><div style="background:var(--bg-card);padding:10px;border-radius:var(--radius);font-family:var(--font-mono);font-size:12px;">${escapeHtml(payload.notes)}</div>` : ''}
+    <div class="btn-row" style="margin-top:24px;">
+      <button class="btn btn-secondary" id="prod-preview-back">← Back to Edit</button>
+      <button class="btn btn-primary" id="prod-preview-confirm">${isEdit ? 'Confirm Changes' : 'Confirm & Save'}</button>
+    </div>
+    <div class="field-hint" style="text-align:center;margin-top:10px;">
+      ${isEdit ? 'Will restore intake balances and re-push Shopify inventory deltas.'
+               : (recipe.product_type === 'fresh' && (payload.pack_breakdown['1lb'] || payload.pack_breakdown['2lb'])
+                   ? 'Will deduct from intake batches and push pack inventory to Shopify.'
+                   : 'Will deduct from intake batches.')}
+    </div>`;
+
+  prodState.pendingPayload = payload;
+  document.getElementById('prod-preview-back').addEventListener('click', () => closeSheet('prod-preview-sheet'));
+  document.getElementById('prod-preview-confirm').addEventListener('click', () => confirmAndSaveBatch());
+  openSheet('prod-preview-sheet');
+}
+
+async function confirmAndSaveBatch(opts = {}) {
+  const payload = prodState.pendingPayload;
+  if (!payload) return;
+  const editingId = prodState.editingId;
+  const confirmBtn = document.getElementById('prod-preview-confirm');
+  if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Saving...'; }
+
+  const body = { ...payload };
+  if (editingId && opts.confirmNegative) body.confirm_negative = true;
 
   try {
-    const res = await api('/api/production', { method: 'POST', body: JSON.stringify(payload) });
+    const res = await api(
+      editingId ? `/api/production/${editingId}` : '/api/production',
+      { method: editingId ? 'PATCH' : 'POST', body: JSON.stringify(body) }
+    );
+    closeSheet('prod-preview-sheet');
     closeSheet('production-sheet');
-    showProdResult(res.batch, res.historical);
+    closeSheet('prod-detail-sheet');
+    prodState.editingId = null;
+    prodState.pendingPayload = null;
+    if (editingId) toast('Batch updated · Shopify synced');
+    else showProdResult(res.batch, res.historical);
     loadProduction();
   } catch (e) {
-    toast('Save failed: ' + e.message, 'error');
+    if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = editingId ? 'Confirm Changes' : 'Confirm & Save'; }
+    if (e.message && e.message.includes('shopify_would_go_negative')) {
+      await showShopifyNegativeWarning('edit', editingId, payload.pack_breakdown || {});
+    } else {
+      toast('Save failed: ' + e.message, 'error');
+    }
   }
-});
+}
+
+// ─────────────────────────────────────────────────────────────
+// EDIT FLOW
+// ─────────────────────────────────────────────────────────────
+async function beginEditBatch(batch, inputs) {
+  if (!prodState.recipes) {
+    try { const data = await api('/api/recipes'); prodState.recipes = data.recipes || []; }
+    catch (e) { toast('Failed to load recipes: ' + e.message, 'error'); return; }
+  }
+  const recipe = prodState.recipes.find(r => r.id === batch.recipe_or_sku);
+  if (!recipe) { toast('Recipe not found in cache.', 'error'); return; }
+
+  let openIntakes = [];
+  try { const data = await api('/api/intake?open_only=1'); openIntakes = data.batches || []; }
+  catch (e) { toast('Failed to load intakes: ' + e.message, 'error'); return; }
+
+  const intakeMap = {};
+  for (const b of openIntakes) intakeMap[b.id] = { ...b };
+
+  const missingIds = inputs.map(i => i.intake_batch_id).filter(id => id && !intakeMap[id]);
+  if (missingIds.length > 0) {
+    try {
+      const allData = await api('/api/intake');
+      for (const b of (allData.batches || [])) {
+        if (missingIds.includes(b.id) && !intakeMap[b.id]) intakeMap[b.id] = { ...b };
+      }
+    } catch { /* non-fatal */ }
+  }
+
+  // Add OLD allocated lbs back as available so user can re-select
+  for (const inp of inputs) {
+    if (inp.intake_batch_id && intakeMap[inp.intake_batch_id]) {
+      intakeMap[inp.intake_batch_id].remaining_lbs += inp.weight_lbs;
+    }
+  }
+  prodState.openIntakes = Object.values(intakeMap).filter(b => b.remaining_lbs > 0.001);
+
+  prodState.editingId = batch.id;
+  prodState.selectedRecipe = recipe;
+  prodState.inputRows = inputs.map(i => ({
+    ingredient: i.ingredient, intake_id: i.intake_batch_id, weight: i.weight_lbs
+  }));
+
+  closeSheet('prod-detail-sheet');
+  document.getElementById('prod-step-recipe').style.display = 'none';
+  document.getElementById('prod-step-form').style.display = 'block';
+  document.getElementById('prod-recipe-name').textContent = recipe.name + ' (editing)';
+  document.getElementById('prod-recipe-sub').textContent = `${recipe.product_type} · editing ${batch.id}`;
+  document.getElementById('prod-date').value = (batch.started_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
+
+  document.getElementById('prod-output-fresh').style.display = recipe.product_type === 'fresh' ? 'block' : 'none';
+  document.getElementById('prod-output-jerky').style.display = recipe.product_type === 'jerky' ? 'block' : 'none';
+
+  const out = batch.output_data_json ? JSON.parse(batch.output_data_json) : {};
+  if (recipe.product_type === 'fresh') {
+    document.getElementById('prod-finished-lbs').value = out.finished_lbs || '';
+    const packs = out.pack_breakdown || {};
+    document.getElementById('prod-pack-1lb').value = packs['1lb'] || '';
+    document.getElementById('prod-pack-2lb').value = packs['2lb'] || '';
+  } else {
+    document.getElementById('prod-loose-lbs').value = out.finished_loose_lbs || '';
+    document.getElementById('prod-self-serve').value = out.self_serve_lbs || '';
+    document.getElementById('prod-bags-8oz').value = out.bags_8oz || '';
+    document.getElementById('prod-bags-16oz').value = out.bags_16oz || '';
+    updateJerkyRecon();
+  }
+  document.getElementById('prod-notes').value = batch.notes || '';
+
+  renderInputRows();
+  openSheet('production-sheet');
+}
+
+// ─────────────────────────────────────────────────────────────
+// DELETE FLOW
+// ─────────────────────────────────────────────────────────────
+async function beginDeleteBatch(batch) {
+  const out = batch.output_data_json ? JSON.parse(batch.output_data_json) : {};
+  if (batch.product_type === 'fresh' && out.pack_breakdown) {
+    const hasPacks = (out.pack_breakdown['1lb'] || 0) > 0 || (out.pack_breakdown['2lb'] || 0) > 0;
+    if (hasPacks) {
+      try {
+        const impact = await api(`/api/production/${batch.id}/shopify-impact`);
+        if (impact.any_negative) {
+          showShopifyNegativeWarning('delete', batch.id, {}, impact);
+          return;
+        }
+      } catch (e) { console.warn('Shopify impact check failed:', e.message); }
+    }
+  }
+  const ok = confirm(
+    `Delete this batch?\n\n${batch.recipe_or_sku} · ${batch.id}\n` +
+    `Finished: ${fmtNum(batch.finished_lbs)} lb · Yield: ${batch.yield_pct ? batch.yield_pct.toFixed(1) : '—'}%\n\n` +
+    `Intake balances will be restored. Shopify pack inventory will be reversed. This cannot be undone.`
+  );
+  if (!ok) return;
+  await executeDelete(batch.id, false);
+}
+
+async function executeDelete(id, confirmNegative) {
+  try {
+    const url = `/api/production/${id}` + (confirmNegative ? '?confirm_negative=1' : '');
+    await api(url, { method: 'DELETE' });
+    toast('Batch deleted · intake & Shopify synced');
+    closeSheet('shopify-warn-sheet');
+    closeSheet('prod-detail-sheet');
+    loadProduction();
+  } catch (e) { toast('Delete failed: ' + e.message, 'error'); }
+}
+
+// ─────────────────────────────────────────────────────────────
+// SHOPIFY NEGATIVE WARNING SHEET
+// ─────────────────────────────────────────────────────────────
+async function showShopifyNegativeWarning(action, batchId, newPacks, impactArg) {
+  let impact = impactArg;
+  if (!impact) {
+    try {
+      const newPacksParam = action === 'edit' ? `?new_packs=${encodeURIComponent(JSON.stringify(newPacks))}` : '';
+      impact = await api(`/api/production/${batchId}/shopify-impact${newPacksParam}`);
+    } catch (e) { toast('Could not check Shopify impact: ' + e.message, 'error'); return; }
+  }
+  if (!impact.adjustments || impact.adjustments.length === 0) {
+    if (action === 'edit') return confirmAndSaveBatch({ confirmNegative: true });
+    if (action === 'delete') return executeDelete(batchId, true);
+    return;
+  }
+
+  const rows = impact.adjustments.map(a => {
+    const arrow = a.qty > 0 ? '↑' : '↓';
+    const negCls = a.would_go_negative ? 'style="color:var(--danger);"' : 'style="color:var(--text);"';
+    const currentStr = a.current === null ? '—' : a.current;
+    const projectedStr = a.projected === null ? '—' : a.projected;
+    return `
+      <div style="background:var(--bg-card);padding:12px;border-radius:var(--radius);margin-bottom:8px;
+                  border-left:3px solid ${a.would_go_negative ? 'var(--danger)' : 'var(--border-strong)'};">
+        <div style="display:flex;justify-content:space-between;font-family:var(--font-mono);font-size:13px;">
+          <span><strong>${a.sku}</strong> ${arrow} ${a.qty > 0 ? '+' : ''}${a.qty}</span>
+          <span ${negCls}>${currentStr} → ${projectedStr}</span>
+        </div>
+        ${a.would_go_negative ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--danger);margin-top:6px;">⚠ Would go negative — likely sold ${Math.abs(a.projected)} since batch logged</div>` : ''}
+        ${!a.sku_found ? `<div style="font-family:var(--font-mono);font-size:11px;color:var(--warn);margin-top:6px;">⚠ SKU not found in Shopify</div>` : ''}
+      </div>`;
+  }).join('');
+
+  const verb = action === 'delete' ? 'Deleting' : 'Editing';
+  const verbing = action === 'delete' ? 'Delete' : 'Save changes';
+
+  document.getElementById('shopify-warn-body').innerHTML = `
+    <div style="background:rgba(255,92,92,0.08);border-left:3px solid var(--danger);padding:14px;border-radius:var(--radius);margin-bottom:18px;font-family:var(--font-mono);font-size:13px;">
+      ${verb} this batch would push Shopify inventory below zero for one or more SKUs.
+      This usually means some packs from this batch have already been sold.
+    </div>
+    <div class="field-label">Per-SKU impact</div>
+    ${rows}
+    <div class="field-hint" style="margin-top:14px;">
+      Proceeding will let Shopify go negative. You'll need to manually correct counts after.
+    </div>
+    <div class="btn-row" style="margin-top:24px;">
+      <button class="btn btn-secondary" data-close="shopify-warn-sheet">Cancel</button>
+      <button class="btn btn-danger" id="shopify-warn-proceed">${verbing} anyway</button>
+    </div>`;
+
+  document.getElementById('shopify-warn-proceed').addEventListener('click', () => {
+    closeSheet('shopify-warn-sheet');
+    if (action === 'edit') confirmAndSaveBatch({ confirmNegative: true });
+    if (action === 'delete') executeDelete(batchId, true);
+  });
+  document.querySelectorAll('[data-close="shopify-warn-sheet"]').forEach(b => {
+    b.addEventListener('click', () => closeSheet('shopify-warn-sheet'));
+  });
+  openSheet('shopify-warn-sheet');
+}
 
 function showProdResult(batch, historical) {
   const out = batch.output_data_json ? JSON.parse(batch.output_data_json) : {};
