@@ -960,6 +960,9 @@ body {
         <div class="field-label" style="font-size:10px;margin-top:18px;">Fresh Recipes</div>
         <div class="capture-choice" id="fresh-recipe-picker"></div>
 
+        <div class="field-label" style="font-size:10px;margin-top:18px;">Raw Recipes</div>
+        <div class="capture-choice" id="raw-recipe-picker"></div>
+
         <div class="field-label" style="font-size:10px;margin-top:18px;">Jerky SKUs</div>
         <div class="capture-choice" id="jerky-sku-picker"></div>
       </div>
@@ -1113,6 +1116,11 @@ body {
 // ============================================================
 const API_BASE = 'https://cogs-tracker.rick-026.workers.dev';
 // For local testing against a mock, set: const API_BASE = 'mock';
+
+// Helper: which product types use the pack-based UI (1lb/2lb tubs) and Shopify push
+function usesPackUI(productType) {
+  return productType === 'fresh' || productType === 'raw';
+}
 
 const state = {
   token: localStorage.getItem('cogs_token') || null,
@@ -1653,7 +1661,7 @@ async function openProdDetail(id) {
     const out = b.output_data_json ? JSON.parse(b.output_data_json) : {};
 
     let outputHtml = '';
-    if (out.mode === 'fresh') {
+    if (out.mode === 'fresh' || out.mode === 'raw') {
       const packs = out.pack_breakdown || {};
       const packLines = Object.entries(packs).filter(([k,v])=>v>0)
         .map(([k,v])=>`${v}× ${k}`).join(' · ');
@@ -1742,12 +1750,19 @@ document.getElementById('new-production-btn').addEventListener('click', async ()
 
   // Render recipe pickers
   const fresh = prodState.recipes.filter(r => r.product_type === 'fresh');
+  const raw = prodState.recipes.filter(r => r.product_type === 'raw');
   const jerky = prodState.recipes.filter(r => r.product_type === 'jerky');
 
   document.getElementById('fresh-recipe-picker').innerHTML = fresh.map(r => `
     <button class="capture-btn" data-recipe="${r.id}">
       <span class="capture-icon">◆</span>
       <div class="capture-label">${r.name.replace(' Recipe','')}</div>
+    </button>`).join('');
+
+  document.getElementById('raw-recipe-picker').innerHTML = raw.map(r => `
+    <button class="capture-btn" data-recipe="${r.id}">
+      <span class="capture-icon">❄</span>
+      <div class="capture-label">${r.name.replace(' Raw','')}</div>
     </button>`).join('');
 
   document.getElementById('jerky-sku-picker').innerHTML = jerky.map(r => `
@@ -1783,11 +1798,13 @@ async function selectRecipeForBatch(recipeId) {
   document.getElementById('prod-step-recipe').style.display = 'none';
   document.getElementById('prod-step-form').style.display = 'block';
   document.getElementById('prod-recipe-name').textContent = recipe.name;
-  document.getElementById('prod-recipe-sub').textContent = recipe.product_type === 'fresh' ? 'Fresh Recipe' : 'Jerky SKU';
+  const subLabels = { fresh: 'Fresh Recipe', raw: 'Raw Recipe', jerky: 'Jerky SKU' };
+  document.getElementById('prod-recipe-sub').textContent = subLabels[recipe.product_type] || recipe.product_type;
   document.getElementById('prod-date').value = new Date().toISOString().slice(0,10);
 
-  // Show right output section
-  document.getElementById('prod-output-fresh').style.display = recipe.product_type === 'fresh' ? 'block' : 'none';
+  // Show right output section (raw uses same UI as fresh)
+  const isPackUI = usesPackUI(recipe.product_type);
+  document.getElementById('prod-output-fresh').style.display = isPackUI ? 'block' : 'none';
   document.getElementById('prod-output-jerky').style.display = recipe.product_type === 'jerky' ? 'block' : 'none';
 
   // Reset output fields
@@ -1798,9 +1815,9 @@ async function selectRecipeForBatch(recipeId) {
   });
   document.getElementById('prod-jerky-recon').style.display = 'none';
 
-  // Pre-populate inputs from recipe template (fresh) or empty (jerky)
+  // Pre-populate inputs from recipe template (fresh/raw) or empty (jerky)
   prodState.inputRows = [];
-  if (recipe.product_type === 'fresh' && recipe.ingredients) {
+  if (isPackUI && recipe.ingredients) {
     for (const ing of recipe.ingredients) {
       // Find an open intake matching this ingredient
       const matching = prodState.openIntakes
@@ -1947,7 +1964,7 @@ function buildProductionPayload() {
     product_type: recipe.product_type, recipe_or_sku: recipe.id,
     date, inputs, notes: document.getElementById('prod-notes').value.trim() || null
   };
-  if (recipe.product_type === 'fresh') {
+  if (usesPackUI(recipe.product_type)) {
     payload.finished_lbs = parseFloat(document.getElementById('prod-finished-lbs').value);
     if (!payload.finished_lbs || payload.finished_lbs <= 0) { toast('Finished weight required', 'error'); return null; }
     payload.pack_breakdown = {
@@ -1983,7 +2000,7 @@ document.getElementById('prod-save-btn').addEventListener('click', async () => {
 
   const totalRawLbs = inputDetails.reduce((s, i) => s + i.weight_lbs, 0);
   const totalRawCost = inputDetails.reduce((s, i) => s + i.cost_usd, 0);
-  const finishedLbs = recipe.product_type === 'fresh' ? payload.finished_lbs : payload.finished_loose_lbs;
+  const finishedLbs = usesPackUI(recipe.product_type) ? payload.finished_lbs : payload.finished_loose_lbs;
   const yieldPct = (finishedLbs / totalRawLbs) * 100;
   const cogsPerLb = totalRawCost / finishedLbs;
 
@@ -2032,7 +2049,7 @@ function renderPreview(ctx) {
     </div>`).join('');
 
   let outputHtml = '';
-  if (recipe.product_type === 'fresh') {
+  if (usesPackUI(recipe.product_type)) {
     const packs = payload.pack_breakdown || {};
     const c1 = packs['1lb'] || 0, c2 = packs['2lb'] || 0;
     const packLbs = c1 + c2 * 2;
@@ -2071,6 +2088,8 @@ function renderPreview(ctx) {
     : (isEdit ? `<div class="field-hint">No other batches of this recipe to compare against.</div>`
               : `<div class="field-hint">First batch of this recipe — yield baseline starts here.</div>`);
 
+  const hasPacks = usesPackUI(recipe.product_type) && payload.pack_breakdown && (payload.pack_breakdown['1lb'] || payload.pack_breakdown['2lb']);
+
   document.getElementById('prod-preview-body').innerHTML = `
     <div style="text-align:center;padding:0 0 18px;">
       <div style="font-family:var(--font-display);font-weight:700;font-size:20px;text-transform:capitalize;">${recipe.name}</div>
@@ -2095,7 +2114,7 @@ function renderPreview(ctx) {
     </div>
     <div class="field-hint" style="text-align:center;margin-top:10px;">
       ${isEdit ? 'Will restore intake balances and re-push Shopify inventory deltas.'
-               : (recipe.product_type === 'fresh' && (payload.pack_breakdown['1lb'] || payload.pack_breakdown['2lb'])
+               : (hasPacks
                    ? 'Will deduct from intake batches and push pack inventory to Shopify.'
                    : 'Will deduct from intake batches.')}
     </div>`;
@@ -2188,11 +2207,12 @@ async function beginEditBatch(batch, inputs) {
   document.getElementById('prod-recipe-sub').textContent = `${recipe.product_type} · editing ${batch.id}`;
   document.getElementById('prod-date').value = (batch.started_at || '').slice(0, 10) || new Date().toISOString().slice(0, 10);
 
-  document.getElementById('prod-output-fresh').style.display = recipe.product_type === 'fresh' ? 'block' : 'none';
+  const isPackUI = usesPackUI(recipe.product_type);
+  document.getElementById('prod-output-fresh').style.display = isPackUI ? 'block' : 'none';
   document.getElementById('prod-output-jerky').style.display = recipe.product_type === 'jerky' ? 'block' : 'none';
 
   const out = batch.output_data_json ? JSON.parse(batch.output_data_json) : {};
-  if (recipe.product_type === 'fresh') {
+  if (isPackUI) {
     document.getElementById('prod-finished-lbs').value = out.finished_lbs || '';
     const packs = out.pack_breakdown || {};
     document.getElementById('prod-pack-1lb').value = packs['1lb'] || '';
@@ -2215,7 +2235,7 @@ async function beginEditBatch(batch, inputs) {
 // ─────────────────────────────────────────────────────────────
 async function beginDeleteBatch(batch) {
   const out = batch.output_data_json ? JSON.parse(batch.output_data_json) : {};
-  if (batch.product_type === 'fresh' && out.pack_breakdown) {
+  if (usesPackUI(batch.product_type) && out.pack_breakdown) {
     const hasPacks = (out.pack_breakdown['1lb'] || 0) > 0 || (out.pack_breakdown['2lb'] || 0) > 0;
     if (hasPacks) {
       try {
