@@ -1602,7 +1602,7 @@ const prodState = {
   recipes: null,         // cached from /api/recipes
   selectedRecipe: null,  // {id, name, product_type, ingredients}
   openIntakes: [],       // cached open intakes for input lookup
-  inputRows: [],         // [{ingredient, intake_id, weight}]
+  inputRows: [],         // [{ingredient, weight}] — lots are allocated FIFO by the worker
 };
 
 async function loadProduction() {
@@ -1819,66 +1819,81 @@ async function selectRecipeForBatch(recipeId) {
   prodState.inputRows = [];
   if (isPackUI && recipe.ingredients) {
     for (const ing of recipe.ingredients) {
-      // Find an open intake matching this ingredient
-      const matching = prodState.openIntakes
-        .filter(b => b.ingredient === ing.ingredient)
-        .sort((a,b) => a.date_received.localeCompare(b.date_received)); // FIFO
       prodState.inputRows.push({
         ingredient: ing.ingredient,
-        intake_id: matching[0] ? matching[0].id : null,
         weight: ing.weight_lbs,
-        suggested_weight: ing.weight_lbs,
-        no_intake: matching.length === 0
+        suggested_weight: ing.weight_lbs
       });
     }
   } else {
     // Jerky: add one empty row by default for the protein
-    prodState.inputRows.push({ ingredient: '', intake_id: null, weight: '' });
+    prodState.inputRows.push({ ingredient: '', weight: '' });
   }
 
   renderInputRows();
 }
 
+// ─────────────────────────────────────────────────────────────
+// FIFO allocation preview (mirrors what the worker does on save):
+// pull the requested pounds from open lots of an ingredient,
+// oldest first, each lot at its own cost.
+// Returns { lots: [{intake_id, date, lbs, cost_per_lb, cost_usd}], available, short }
+// ─────────────────────────────────────────────────────────────
+function allocateFifo(ingredient, weight) {
+  const lots = prodState.openIntakes
+    .filter(b => b.ingredient === ingredient && b.remaining_lbs > 0.001)
+    .sort((a, b) => (a.date_received + a.id).localeCompare(b.date_received + b.id));
+  const available = lots.reduce((s, b) => s + b.remaining_lbs, 0);
+  const out = [];
+  let need = parseFloat(weight) || 0;
+  for (const b of lots) {
+    if (need <= 0.0005) break;
+    const take = Math.min(need, b.remaining_lbs);
+    const cpl = b.cost_usd / b.weight_lbs;
+    out.push({ intake_id: b.id, date: b.date_received, lbs: take, cost_per_lb: cpl, cost_usd: cpl * take });
+    need -= take;
+  }
+  return { lots: out, available, short: need > 0.0005 ? need : 0, lot_count: lots.length };
+}
+
 function renderInputRows() {
   const container = document.getElementById('prod-inputs');
-  // Build ingredient list grouped by ingredient name
-  const ingredientGroups = {};
-  for (const b of prodState.openIntakes) {
-    if (!ingredientGroups[b.ingredient]) ingredientGroups[b.ingredient] = [];
-    ingredientGroups[b.ingredient].push(b);
-  }
-  for (const ing of Object.keys(ingredientGroups)) {
-    ingredientGroups[ing].sort((a,b) => a.date_received.localeCompare(b.date_received));
-  }
-  const allIngredients = Object.keys(ingredientGroups).sort();
+  const allIngredients = [...new Set(prodState.openIntakes.map(b => b.ingredient))].sort();
 
   container.innerHTML = prodState.inputRows.map((row, idx) => {
-    const intakesForIng = row.ingredient ? (ingredientGroups[row.ingredient] || []) : [];
-    const noIntakeWarn = row.ingredient && intakesForIng.length === 0
-      ? `<div style="color:var(--warn);font-family:var(--font-mono);font-size:10px;margin-top:6px;">⚠ No open intake for "${row.ingredient}". Log an intake first.</div>` : '';
-
+    let hint = '';
+    if (row.ingredient) {
+      const alloc = allocateFifo(row.ingredient, row.weight);
+      if (alloc.lot_count === 0) {
+        hint = `<div style="color:var(--warn);font-family:var(--font-mono);font-size:10px;margin-top:6px;">⚠ No open intake for "${row.ingredient.replace(/_/g,' ')}". Log an intake first.</div>`;
+      } else {
+        const lotsText = alloc.lots.map(l => `${fmtNum(l.lbs)} lb @ $${l.cost_per_lb.toFixed(2)} (${l.date.slice(5)})`).join(' + ');
+        const avail = `Available: ${fmtNum(alloc.available)} lb across ${alloc.lot_count} lot${alloc.lot_count===1?'':'s'}`;
+        if (alloc.short > 0) {
+          hint = `<div style="color:var(--warn);font-family:var(--font-mono);font-size:10px;margin-top:6px;">⚠ ${avail} — short ${fmtNum(alloc.short)} lb</div>`;
+        } else if (alloc.lots.length > 0) {
+          const total = alloc.lots.reduce((s,l)=>s+l.cost_usd,0);
+          hint = `<div style="color:var(--text-faint);font-family:var(--font-mono);font-size:10px;margin-top:6px;line-height:1.5;">${avail}<br>Uses: ${lotsText} = $${total.toFixed(2)}</div>`;
+        } else {
+          hint = `<div style="color:var(--text-faint);font-family:var(--font-mono);font-size:10px;margin-top:6px;">${avail}</div>`;
+        }
+      }
+    }
     return `
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:10px;" data-row="${idx}">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+      <div style="display:flex;gap:8px;align-items:center;">
         <select class="select" data-field="ingredient" style="flex:1;height:44px;font-size:13px;">
           <option value="">— pick ingredient —</option>
           ${allIngredients.map(i => `<option value="${i}" ${i===row.ingredient?'selected':''}>${i.replace(/_/g,' ')}</option>`).join('')}
         </select>
+        <input type="number" step="0.01" class="input" data-field="weight" value="${row.weight||''}" placeholder="lbs" inputmode="decimal" style="height:44px;width:96px;flex:none;">
         <button class="line-item-remove" data-remove="${idx}" style="width:auto;margin:0;padding:8px 12px;">✕</button>
       </div>
-      <div class="field-row">
-        <select class="select" data-field="intake_id" style="height:44px;font-size:11px;">
-          ${intakesForIng.length === 0 ? '<option value="">— no intakes —</option>' : ''}
-          ${intakesForIng.map(b => `<option value="${b.id}" ${b.id===row.intake_id?'selected':''}>${b.date_received} · ${fmtNum(b.remaining_lbs)} lb @ $${(b.cost_usd/b.weight_lbs).toFixed(2)}/lb</option>`).join('')}
-        </select>
-        <input type="number" step="0.01" class="input" data-field="weight" value="${row.weight||''}" placeholder="lbs" inputmode="decimal" style="height:44px;">
-      </div>
       ${row.suggested_weight ? `<div class="field-hint">Recipe calls for ${fmtNum(row.suggested_weight)} lb</div>` : ''}
-      ${noIntakeWarn}
+      ${hint}
     </div>`;
   }).join('');
 
-  // Wire up change handlers
   container.querySelectorAll('[data-row]').forEach(rowEl => {
     const idx = parseInt(rowEl.dataset.row);
     rowEl.querySelectorAll('[data-field]').forEach(input => {
@@ -1886,15 +1901,10 @@ function renderInputRows() {
         const field = input.dataset.field;
         if (field === 'ingredient') {
           prodState.inputRows[idx].ingredient = input.value;
-          // Auto-pick oldest intake
-          const matches = ingredientGroups[input.value] || [];
-          prodState.inputRows[idx].intake_id = matches[0] ? matches[0].id : null;
-          renderInputRows();
-        } else if (field === 'intake_id') {
-          prodState.inputRows[idx].intake_id = input.value;
         } else if (field === 'weight') {
           prodState.inputRows[idx].weight = parseFloat(input.value) || '';
         }
+        renderInputRows();
       });
     });
     rowEl.querySelector('[data-remove]').addEventListener('click', () => {
@@ -1905,7 +1915,7 @@ function renderInputRows() {
 }
 
 document.getElementById('prod-add-input').addEventListener('click', () => {
-  prodState.inputRows.push({ ingredient: '', intake_id: null, weight: '' });
+  prodState.inputRows.push({ ingredient: '', weight: '' });
   renderInputRows();
 });
 
@@ -1945,18 +1955,23 @@ function buildProductionPayload() {
   const date = document.getElementById('prod-date').value;
   if (!date) { toast('Date required', 'error'); return null; }
 
+  // Merge duplicate ingredient rows, then allocate FIFO across open lots
+  const merged = {};
+  for (const row of prodState.inputRows) {
+    if (!row.ingredient || !row.weight || row.weight <= 0) continue;
+    merged[row.ingredient] = (merged[row.ingredient] || 0) + parseFloat(row.weight);
+  }
   const inputs = [];
   const inputDetails = [];
-  for (const row of prodState.inputRows) {
-    if (!row.ingredient || !row.intake_id || !row.weight || row.weight <= 0) continue;
-    const intake = prodState.openIntakes.find(b => b.id === row.intake_id);
-    const costPerLb = intake ? (intake.cost_usd / intake.weight_lbs) : 0;
-    const weight = parseFloat(row.weight);
-    inputs.push({ intake_batch_id: row.intake_id, weight_lbs: weight });
-    inputDetails.push({
-      ingredient: row.ingredient, intake_id: row.intake_id,
-      weight_lbs: weight, cost_per_lb: costPerLb, cost_usd: costPerLb * weight
-    });
+  for (const [ingredient, weight] of Object.entries(merged)) {
+    const alloc = allocateFifo(ingredient, weight);
+    if (alloc.short > 0) {
+      toast(`Not enough ${ingredient.replace(/_/g,' ')}: ${fmtNum(alloc.available)} lb available, need ${fmtNum(weight)} lb`, 'error');
+      return null;
+    }
+    inputs.push({ ingredient, weight_lbs: weight });
+    const cost = alloc.lots.reduce((s, l) => s + l.cost_usd, 0);
+    inputDetails.push({ ingredient, weight_lbs: weight, cost_usd: cost, cost_per_lb: cost / weight, lots: alloc.lots });
   }
   if (inputs.length === 0) { toast('Add at least one input with a valid weight', 'error'); return null; }
 
@@ -2043,9 +2058,10 @@ function renderPreview(ctx) {
         <span style="text-transform:capitalize;">${i.ingredient.replace(/_/g, ' ')}</span>
         <span>${fmtNum(i.weight_lbs)} lb · $${i.cost_usd.toFixed(2)}</span>
       </div>
+      ${(i.lots || []).map(l => `
       <div style="color:var(--text-faint);font-size:10px;margin-top:4px;display:flex;justify-content:space-between;">
-        <span>${i.intake_id}</span><span>$${i.cost_per_lb.toFixed(2)}/lb</span>
-      </div>
+        <span>${l.date} · ${l.intake_id}</span><span>${fmtNum(l.lbs)} lb @ $${l.cost_per_lb.toFixed(2)}/lb</span>
+      </div>`).join('')}
     </div>`).join('');
 
   let outputHtml = '';
@@ -2196,8 +2212,11 @@ async function beginEditBatch(batch, inputs) {
 
   prodState.editingId = batch.id;
   prodState.selectedRecipe = recipe;
-  prodState.inputRows = inputs.map(i => ({
-    ingredient: i.ingredient, intake_id: i.intake_batch_id, weight: i.weight_lbs
+  // Group the batch's lot-level inputs back into one row per ingredient
+  const byIng = {};
+  for (const i of inputs) byIng[i.ingredient] = (byIng[i.ingredient] || 0) + i.weight_lbs;
+  prodState.inputRows = Object.entries(byIng).map(([ingredient, weight]) => ({
+    ingredient, weight: Math.round(weight * 100) / 100
   }));
 
   closeSheet('prod-detail-sheet');
